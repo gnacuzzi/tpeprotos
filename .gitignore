@@ -1,0 +1,11 @@
+# Archivos de sistema macOS
+.DS_Store
+
+# Compilación
+*.o
+*.out
+*.exe
+*.class
+
+# Logs
+*.log

@@ -6,6 +6,11 @@
 *.out
 *.exe
 *.class
+bin/
+obj/
 
 # Logs
 *.log
+
+#especial
+.env

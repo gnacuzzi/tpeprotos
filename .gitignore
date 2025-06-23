@@ -14,3 +14,4 @@ obj/
 
 #especial
 .env
+.vscode/

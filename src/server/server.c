@@ -50,12 +50,17 @@ static void echo_read(struct selector_key *key) {
 
     buffer_write_adv(&d->read_buf, r);
 
-    memcpy(d->raw_w, buffer_read_ptr(&d->read_buf, &n), r);
+    // Inicializá el write_buf con el mismo contenido
+    buffer_reset(&d->write_buf);
+    size_t read_n;
+    uint8_t *read_ptr = buffer_read_ptr(&d->read_buf, &read_n);
+    memcpy(d->raw_w, read_ptr, read_n);
     buffer_init(&d->write_buf, BUF_SIZE, d->raw_w);
-    buffer_write_adv(&d->write_buf, r);
+    buffer_write_adv(&d->write_buf, read_n);
 
     selector_set_interest_key(key, OP_WRITE);
 }
+
 
 static void echo_write(struct selector_key *key) {
     echo_data *d = key->data;
@@ -73,6 +78,8 @@ static void echo_write(struct selector_key *key) {
     if (!buffer_can_read(&d->write_buf)) {
         selector_set_interest_key(key, OP_READ);
     }
+    buffer_reset(&d->read_buf);
+
 }
 
 static void echo_close(struct selector_key *key) {

@@ -21,9 +21,21 @@ typedef struct {
     uint8_t raw_w[BUF_SIZE];
 } echo_data;
 
+
 static void echo_read(struct selector_key *key);
 static void echo_write(struct selector_key *key);
 static void echo_close(struct selector_key *key);
+static void accept_conn(struct selector_key *key);
+
+static const struct fd_handler echo_handler = {
+    .handle_read  = echo_read,
+    .handle_write = echo_write,
+    .handle_close = echo_close,
+};
+
+static const struct fd_handler accept_handler = {
+    .handle_read = accept_conn,
+};
 
 static void echo_read(struct selector_key *key) {
     echo_data *d = key->data;
@@ -81,12 +93,7 @@ static void accept_conn(struct selector_key *key) {
     buffer_init(&d->read_buf, BUF_SIZE, d->raw_r);
     buffer_init(&d->write_buf, BUF_SIZE, d->raw_w);
 
-    const struct fd_handler h = {
-        .handle_read  = echo_read,
-        .handle_write = echo_write,
-        .handle_close = echo_close,
-    };
-    selector_register(key->s, client_fd, &h, OP_READ, d);
+    selector_register(key->s, client_fd, &echo_handler, OP_READ, d);
 }
 
 int create_listener(const char *port) {
@@ -114,10 +121,7 @@ int main(void) {
     int server_fd = create_listener(PORT);
     fcntl(server_fd, F_SETFL, O_NONBLOCK);
 
-    const struct fd_handler h = {
-        .handle_read = accept_conn,
-    };
-    selector_register(sel, server_fd, &h, OP_READ, NULL);
+    selector_register(sel, server_fd, &accept_handler, OP_READ, NULL);
 
     while (1) {
         selector_select(sel);

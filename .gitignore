@@ -15,3 +15,6 @@ obj/
 #especial
 .env
 .vscode/
+background.sh
+Dockerfile
+run.sh

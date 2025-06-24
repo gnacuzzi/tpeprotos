@@ -27,6 +27,10 @@ ifneq ($(WSL), 0)
 COMPILERFLAGS += -D_POSIX_C_SOURCE=200112L
 endif
 
+ifneq ($(MAC), 0)
+COMPILERFLAGS += -DMSG_NOSIGNAL=0
+endif
+
 all: server client 
 
 server: $(SERVER_OUTPUT_FILE)

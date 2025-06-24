@@ -23,6 +23,10 @@ SERVER_OUTPUT_FILE := $(OUTPUT_FOLDER)/socks5
 CLIENT_OUTPUT_FILE := $(OUTPUT_FOLDER)/client
 TEST_OUTPUTS := $(patsubst $(TEST_DIR)/%.c,$(OUTPUT_FOLDER)/%_test,$(TEST_SOURCES))
 
+ifneq ($(WSL), 0)
+COMPILERFLAGS += -D_POSIX_C_SOURCE=200112L
+endif
+
 all: server client 
 
 server: $(SERVER_OUTPUT_FILE)

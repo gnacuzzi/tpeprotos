@@ -12,6 +12,7 @@
 #include <signal.h>
 
 #include <netinet/in.h>   
+#include "greeting.h"
 #include "../../utils/include/buffer.h"
 #include "../../utils/include/selector.h"
 #include "../../utils/include/stm.h"         
@@ -45,13 +46,9 @@ typedef struct {
     buffer p2c_read, p2c_write;
     uint8_t raw_p2c_r[BUF_SIZE], raw_p2c_w[BUF_SIZE];
 
-    uint8_t addr_type;
     union {
-      struct in_addr v4;
-      char   domain[256]; //magic number
-      struct in6_addr v6;
-    } dst_addr;
-    uint16_t dst_port;
+        socks5_greeting greeting; 
+    } parsers;
 
     struct state_machine stm;
 } socks5_session;

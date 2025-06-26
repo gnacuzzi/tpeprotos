@@ -15,6 +15,7 @@ obj/
 #especial
 .env
 .vscode/
+.idea/
 background.sh
 Dockerfile
 run.sh

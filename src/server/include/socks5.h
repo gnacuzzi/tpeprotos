@@ -13,6 +13,7 @@
 
 #include <netinet/in.h>   
 #include "greeting.h"
+#include "request.h"
 #include "../../utils/include/buffer.h"
 #include "../../utils/include/selector.h"
 #include "../../utils/include/stm.h"         
@@ -47,7 +48,8 @@ typedef struct {
     uint8_t raw_p2c_r[BUF_SIZE], raw_p2c_w[BUF_SIZE];
 
     union {
-        socks5_greeting greeting; 
+        socks5_greeting greeting;
+        socks5_request_parser request; 
     } parsers;
 
     struct state_machine stm;

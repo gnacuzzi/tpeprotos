@@ -26,6 +26,9 @@ static void socks5_block(struct selector_key *key) {
 static void socks5_close(struct selector_key *key) {
     socks5_session *s = key->data;
     stm_handler_close(&s->stm, key);
+    //no estoy segura si esto esta bien 
+    socks5_request_free(&s->parsers.request.request);
+    free(s);
 }
 
 static const struct fd_handler socks5_handler = {
@@ -58,7 +61,7 @@ static void accept_conn(struct selector_key *key) {
     const struct state_definition *socks5_states = get_socks5_states();
     s->stm.states = socks5_states;
     s->stm.initial = SOCKS5_GREETING;
-    s->stm.max_state = SOCKS5_GREETING_REPLY; //por ahora este es el último estado
+    s->stm.max_state = SOCKS5_CLOSING; 
     stm_init(&s->stm);
 
     selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);

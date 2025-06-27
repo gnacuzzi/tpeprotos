@@ -135,21 +135,22 @@ static unsigned on_greet_read(struct selector_key *key) {
 static unsigned on_greet_write(struct selector_key *key) {
     socks5_session *s = key->data;
     buffer *buf = &s->p2c_write;
-    size_t n; uint8_t *ptr;
-
-    ptr = buffer_read_ptr(buf, &n);
-    ssize_t sent = send(key->fd, ptr, n, MSG_NOSIGNAL); //no es bloquante no?
-    if (sent <= 0) {
-        return SOCKS5_CLOSING;
-    }
+    size_t n; uint8_t *ptr = buffer_read_ptr(buf, &n);
+    ssize_t sent = send(key->fd, ptr, n, MSG_NOSIGNAL);
+    if (sent <= 0) return SOCKS5_CLOSING;
     buffer_read_adv(buf, sent);
 
     if (!buffer_can_read(buf)) {
         selector_set_interest_key(key, OP_READ);
-        return SOCKS5_METHOD;
+        if (s->parsers.greeting.rep.method == NO_AUTH) {
+            return SOCKS5_REQUEST;
+        } else {
+            return SOCKS5_METHOD;
+        }
     }
     return SOCKS5_GREETING_REPLY;
 }
+
 
 static void on_authentication(const unsigned state, struct selector_key *key) {
     socks5_session *s = key->data;

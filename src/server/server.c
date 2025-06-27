@@ -5,16 +5,43 @@
 
 static void accept_conn(struct selector_key *key);
 
+//no se si estan bien estas
+static void socks5_close(struct selector_key *key) {
+    socks5_session *s = key->data;
+    if (s->is_closing) {
+        return;  
+    }
+    s->is_closing = true;
+    stm_handler_close(&s->stm, key);
+    selector_unregister_fd(key->s, s->client_fd);
+    close(s->client_fd);
+    if (s->remote_fd >= 0) {
+        selector_unregister_fd(key->s, s->remote_fd);
+        close(s->remote_fd);
+    }
+    socks5_request_free(&s->parsers.request.request);
+    free(s);
+}
+
+
 static void socks5_read(struct selector_key *key) {
     socks5_session *s = key->data;
-    unsigned next_state = stm_handler_read(&s->stm, key);
-    s->stm.current = &s->stm.states[next_state];
+    unsigned next = stm_handler_read(&s->stm, key);
+    if (next == SOCKS5_CLOSING) {
+        socks5_close(key);
+        return;
+    }
+    s->stm.current = &s->stm.states[next];
 }
 
 static void socks5_write(struct selector_key *key) {
     socks5_session *s = key->data;
-    unsigned next_state = stm_handler_write(&s->stm, key);
-    s->stm.current = &s->stm.states[next_state];
+    unsigned next = stm_handler_write(&s->stm, key);
+    if (next == SOCKS5_CLOSING) {
+        socks5_close(key);
+        return;
+    }
+    s->stm.current = &s->stm.states[next];
 }
 
 static void socks5_block(struct selector_key *key) {
@@ -23,13 +50,6 @@ static void socks5_block(struct selector_key *key) {
     s->stm.current = &s->stm.states[next_state];
 }
 
-static void socks5_close(struct selector_key *key) {
-    socks5_session *s = key->data;
-    stm_handler_close(&s->stm, key);
-    //no estoy segura si esto esta bien 
-    socks5_request_free(&s->parsers.request.request);
-    free(s);
-}
 
 static const struct fd_handler socks5_handler = {
     .handle_read  = socks5_read,
@@ -53,6 +73,7 @@ static void accept_conn(struct selector_key *key) {
     socks5_session *s = calloc(1, sizeof(*s));
     s->client_fd = client_fd;
     s->remote_fd = -1;
+    s->is_closing = false;
     buffer_init(&s->c2p_read, BUF_SIZE, s->raw_c2p_r);
     buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
     buffer_init(&s->p2c_read, BUF_SIZE, s->raw_p2c_r);

@@ -3,6 +3,7 @@
 static void on_greet(const unsigned state, struct selector_key *key);
 static unsigned on_greet_read   (struct selector_key *key);
 static unsigned on_greet_write  (struct selector_key *key);
+
 static void on_authentication(const unsigned state, struct selector_key *key);
 static unsigned on_authentication_read(struct selector_key *key);
 static unsigned on_authentication_write(struct selector_key *key);
@@ -13,6 +14,10 @@ static unsigned on_request_forward_read(struct selector_key *key);
 static unsigned on_request_forward_write(struct selector_key *key);
 static unsigned on_request_connect_write(struct selector_key *key);
 static unsigned on_request_bind_write(struct selector_key *key);
+
+static void on_stream(const unsigned state, struct selector_key *key);
+static unsigned on_closing_read(struct selector_key *key);
+static unsigned on_closing_write(struct selector_key *key);
 
 static const struct state_definition socks5_states[] = {
     [SOCKS5_GREETING] = {
@@ -53,6 +58,7 @@ static const struct state_definition socks5_states[] = {
     },
     [SOCKS5_STREAM] = {
         .state          = SOCKS5_STREAM,
+        .on_arrival     = on_stream,
         .on_read_ready  = on_request_forward_read,
         .on_write_ready = on_request_forward_write,
     },
@@ -61,6 +67,8 @@ static const struct state_definition socks5_states[] = {
     },
     [SOCKS5_CLOSING] = {
         .state          = SOCKS5_CLOSING,
+        .on_read_ready  = on_closing_read,
+        .on_write_ready = on_closing_write,
     },
 };
 
@@ -327,6 +335,10 @@ static unsigned on_request_bind_write(struct selector_key *key) {
     return SOCKS5_REQUEST_REPLY;
 }
 
+static void on_stream(const unsigned state, struct selector_key *key) {
+    selector_set_interest_key(key, OP_READ);
+}
+
 static unsigned on_request_forward_read(struct selector_key *key) {
     socks5_session *s = key->data;
     int fd       = key->fd;
@@ -360,5 +372,13 @@ static unsigned on_request_forward_write(struct selector_key *key) {
         selector_set_interest(key->s, peer_fd, OP_READ);
     }
     return SOCKS5_REQUEST_REPLY;
+}
+
+// CLOSING
+static unsigned on_closing_read(struct selector_key *key) {
+    return SOCKS5_CLOSING;
+}
+static unsigned on_closing_write(struct selector_key *key) {
+    return SOCKS5_CLOSING;
 }
 

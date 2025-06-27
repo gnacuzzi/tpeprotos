@@ -55,6 +55,7 @@ typedef struct {
     } parsers;
 
     struct state_machine stm;
+    bool is_closing;
 } socks5_session;
 
 const struct state_definition *get_socks5_states(void);

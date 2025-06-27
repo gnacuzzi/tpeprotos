@@ -3,6 +3,9 @@
 static void on_greet(const unsigned state, struct selector_key *key);
 static unsigned on_greet_read   (struct selector_key *key);
 static unsigned on_greet_write  (struct selector_key *key);
+static void on_authentication(const unsigned state, struct selector_key *key);
+static unsigned on_authentication_read(struct selector_key *key);
+static unsigned on_authentication_write(struct selector_key *key);
 
 static void on_request(const unsigned state, struct selector_key *key);
 static unsigned on_request_read (struct selector_key *key);
@@ -20,6 +23,15 @@ static const struct state_definition socks5_states[] = {
     [SOCKS5_GREETING_REPLY] = {
         .state          = SOCKS5_GREETING_REPLY,
         .on_write_ready = on_greet_write,
+    },
+    [SOCKS5_METHOD] = {
+        .state          = SOCKS5_METHOD,
+        .on_arrival     = on_authentication,
+        .on_read_ready  = on_authentication_read,
+    },
+    [SOCKS5_METHOD_REPLY] = {
+        .state          = SOCKS5_METHOD_REPLY,
+        .on_write_ready = on_authentication_write,
     },
     [SOCKS5_REQUEST] = {
         .state          = SOCKS5_REQUEST,
@@ -124,11 +136,65 @@ static unsigned on_greet_write(struct selector_key *key) {
     buffer_read_adv(buf, sent);
 
     if (!buffer_can_read(buf)) {
-        return SOCKS5_REQUEST;
+        selector_set_interest_key(key, OP_READ);
+        return SOCKS5_METHOD;
     }
     return SOCKS5_GREETING_REPLY;
 }
 
+static void on_authentication(const unsigned state, struct selector_key *key) {
+    socks5_session *s = key->data;
+    authentication_init(&s->parsers.authentication);
+}
+
+//AUTH
+static unsigned on_authentication_read(struct selector_key *key) {
+    socks5_session *s = key->data;
+    socks5_authentication *auth = &s->parsers.authentication;
+    buffer *buf = &s->c2p_read;
+    size_t space;
+    uint8_t *dst = buffer_write_ptr(buf, &space);
+    ssize_t r = recv(key->fd, dst, space, 0);
+    if (r <= 0) {
+        return SOCKS5_CLOSING;
+    }
+    buffer_write_adv(buf, r);
+
+
+    bool error = false;
+    authentication_idx idx = authentication_parse(auth, buf, &error);
+
+    if (error) {
+        fprintf(stderr, "Authentication error: invalid request\n");
+        return  SOCKS5_ERROR;
+    }
+
+    if( idx == AUTHENTICATION_PASSWD) {
+        auth->rep.ver = 0x01;
+        auth->rep.status = AUTHENTICATION_STATUS_SUCCESS;
+        uint8_t reply[2] = { auth->rep.ver, auth->rep.status };
+        for (size_t i = 0; i < sizeof(reply); i++)
+            buffer_write(&s->p2c_write, reply[i]);
+        selector_set_interest_key(key, OP_WRITE);
+        return SOCKS5_METHOD_REPLY;
+    }
+    return SOCKS5_METHOD_REPLY;
+}
+
+static unsigned on_authentication_write(struct selector_key *key) {
+    socks5_session *s = key->data;
+    size_t count; 
+    uint8_t *bufptr = buffer_read_ptr(&s->p2c_write, &count);
+    ssize_t sent = send(key->fd, bufptr, count, MSG_NOSIGNAL);
+    if (sent < 0){ 
+        return SOCKS5_ERROR;
+    }
+    if (!buffer_can_read(&s->p2c_write)) {
+        return SOCKS5_CLOSING;
+    }
+    buffer_read_adv(&s->p2c_write, sent);
+    return SOCKS5_METHOD_REPLY;
+}
 
 //REQUEST
 static void on_request(const unsigned state, struct selector_key *key) {

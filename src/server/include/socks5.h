@@ -16,7 +16,8 @@
 #include "request.h"
 #include "../../utils/include/buffer.h"
 #include "../../utils/include/selector.h"
-#include "../../utils/include/stm.h"         
+#include "../../utils/include/stm.h"    
+#include "authentication.h"     
 
 #define BUF_SIZE 4096
 
@@ -50,6 +51,7 @@ typedef struct {
     union {
         socks5_greeting greeting;
         socks5_request_parser request; 
+        socks5_authentication  authentication;
     } parsers;
 
     struct state_machine stm;

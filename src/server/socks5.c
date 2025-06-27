@@ -53,6 +53,8 @@ static const struct state_definition socks5_states[] = {
     },
     [SOCKS5_STREAM] = {
         .state          = SOCKS5_STREAM,
+        .on_read_ready  = on_request_forward_read,
+        .on_write_ready = on_request_forward_write,
     },
     [SOCKS5_ERROR] = {
         .state          = SOCKS5_ERROR,
@@ -196,15 +198,15 @@ static unsigned on_authentication_write(struct selector_key *key) {
     size_t count; 
     uint8_t *bufptr = buffer_read_ptr(&s->p2c_write, &count);
     ssize_t sent = send(key->fd, bufptr, count, MSG_NOSIGNAL);
-    if (sent < 0){ 
+    if (sent < 0) {
         return SOCKS5_ERROR;
     }
-    if (!buffer_can_read(&s->p2c_write)) {
-        return SOCKS5_CLOSING;
-    }
     buffer_read_adv(&s->p2c_write, sent);
-    selector_set_interest_key(key, OP_READ);
-    return SOCKS5_REQUEST;
+    if (!buffer_can_read(&s->p2c_write)) {
+        selector_set_interest_key(key, OP_READ);
+        return SOCKS5_REQUEST;
+    }
+    return SOCKS5_METHOD_REPLY;
 }
 
 //REQUEST

@@ -51,6 +51,15 @@ static const struct state_definition socks5_states[] = {
         .state          = SOCKS5_REQUEST_BIND,
         .on_write_ready  = on_request_bind_write,
     },
+    [SOCKS5_STREAM] = {
+        .state          = SOCKS5_STREAM,
+    },
+    [SOCKS5_ERROR] = {
+        .state          = SOCKS5_ERROR,
+    },
+    [SOCKS5_CLOSING] = {
+        .state          = SOCKS5_CLOSING,
+    },
 };
 
 const struct state_definition *get_socks5_states(void) {
@@ -193,7 +202,8 @@ static unsigned on_authentication_write(struct selector_key *key) {
         return SOCKS5_CLOSING;
     }
     buffer_read_adv(&s->p2c_write, sent);
-    return SOCKS5_METHOD_REPLY;
+    selector_set_interest_key(key, OP_READ);
+    return SOCKS5_REQUEST;
 }
 
 //REQUEST

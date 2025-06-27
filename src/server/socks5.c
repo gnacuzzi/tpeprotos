@@ -155,18 +155,15 @@ static unsigned on_authentication_read(struct selector_key *key) {
 
 static unsigned on_authentication_write(struct selector_key *key) {
     socks5_session *s = key->data;
-    size_t count;
-    uint8_t * bufptr = buffer_read_ptr(&s->c2p_write, &count);
+    size_t count; 
+    uint8_t *bufptr = buffer_read_ptr(&s->p2c_write, &count);
     ssize_t sent = send(key->fd, bufptr, count, MSG_NOSIGNAL);
-    if( sent < 0) {
+    if (sent < 0){ 
         return SOCKS5_ERROR;
     }
-    buffer_read_adv(&s->c2p_write, sent);
-    if (!buffer_can_read(&s->c2p_write)) {
-        if( s->parsers.authentication.rep.status == AUTHENTICATION_STATUS_SUCCESS) {
-            return SOCKS5_REQUEST;
-        }
-        return SOCKS5_ERROR;
+    if (!buffer_can_read(&s->p2c_write)) {
+        return SOCKS5_CLOSING;
     }
-    return SOCKS5_REQUEST;
+    buffer_read_adv(&s->p2c_write, sent);
+    return SOCKS5_METHOD_REPLY;
 }

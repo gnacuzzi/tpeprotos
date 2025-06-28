@@ -51,7 +51,7 @@ static void socks5_block(struct selector_key *key) {
 }
 
 
-static const struct fd_handler socks5_handler = {
+const struct fd_handler socks5_handler = {
     .handle_read  = socks5_read,
     .handle_write = socks5_write,
     .handle_block = socks5_block, 

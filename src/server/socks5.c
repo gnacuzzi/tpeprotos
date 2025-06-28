@@ -1,4 +1,10 @@
 #include "include/socks5.h"
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <errno.h>
+#include <fcntl.h>
+
+extern const struct fd_handler socks5_handler;
 
 static void on_greet(const unsigned state, struct selector_key *key);
 static unsigned on_greet_read   (struct selector_key *key);
@@ -18,6 +24,8 @@ static unsigned on_request_bind_write(struct selector_key *key);
 static void on_stream(const unsigned state, struct selector_key *key);
 static unsigned on_closing_read(struct selector_key *key);
 static unsigned on_closing_write(struct selector_key *key);
+
+static int init_remote_connection(socks5_session *s, struct selector_key *key);
 
 static const struct state_definition socks5_states[] = {
     [SOCKS5_GREETING] = {
@@ -64,6 +72,8 @@ static const struct state_definition socks5_states[] = {
     },
     [SOCKS5_ERROR] = {
         .state          = SOCKS5_ERROR,
+        .on_read_ready  = on_closing_read,
+        .on_write_ready = on_closing_write,
     },
     [SOCKS5_CLOSING] = {
         .state          = SOCKS5_CLOSING,
@@ -244,8 +254,12 @@ static unsigned on_request_read(struct selector_key *key) {
 
         switch (s->parsers.request.request.cmd) {
             case SOCKS5_CMD_CONNECT:
+                if (init_remote_connection(s, key) < 0) {
+                    return SOCKS5_ERROR;
+                }
                 return SOCKS5_REQUEST_CONNECT;
             case SOCKS5_CMD_BIND:
+                selector_set_interest_key(key, OP_WRITE);
                 return SOCKS5_REQUEST_BIND;
             case SOCKS5_CMD_UDP_ASSOCIATE:
                 return SOCKS5_ERROR;
@@ -283,30 +297,35 @@ static int fill_bound_address(int fd, socks5_address *addr) {
 }
 
 static unsigned on_request_connect_write(struct selector_key *key) {
-    socks5_session *s = key->data;
+socks5_session *s = key->data;
+    int rfd = key->fd;
 
-    socks5_reply rep;
-    rep.version = SOCKS5_VERSION;
-    rep.rep     = SOCKS5_REP_SUCCEEDED;
-    rep.rsv     = 0x00;
-
-    if (fill_bound_address(s->remote_fd, &rep.bnd) < 0) {
+    int err=0; socklen_t len=sizeof(err);
+    getsockopt(rfd, SOL_SOCKET, SO_ERROR, &err, &len);
+    if (err) {
         return SOCKS5_ERROR;
     }
 
-    uint8_t *out;
-    size_t   outlen;
-    if (socks5_build_reply(&rep, &out, &outlen) < 0) {
+    socks5_reply rep = {
+      .version = SOCKS5_VERSION,
+      .rep     = SOCKS5_REP_SUCCEEDED,
+      .rsv     = 0x00
+    };
+    if (fill_bound_address(rfd, &rep.bnd) < 0) {
         return SOCKS5_ERROR;
     }
-
-    for (size_t i = 0; i < outlen; i++) {
+    uint8_t *out; size_t outlen;
+    socks5_build_reply(&rep, &out, &outlen);
+    for (size_t i=0; i<outlen; i++) {
         buffer_write(&s->p2c_write, out[i]);
     }
     free(out);
 
-    selector_set_interest_key(key, OP_WRITE);
-    return SOCKS5_REQUEST_REPLY;
+    selector_set_interest(key->s, s->client_fd, OP_WRITE); 
+    selector_set_interest(key->s, rfd, OP_READ);   
+
+    s->stm.current = &s->stm.states[SOCKS5_STREAM];
+    return SOCKS5_STREAM;
 }
 
 static unsigned on_request_bind_write(struct selector_key *key) {
@@ -364,6 +383,13 @@ static unsigned on_request_forward_write(struct selector_key *key) {
     size_t n; uint8_t *src = buffer_read_ptr(wbuf, &n);
     ssize_t snt = send(fd, src, n, MSG_NOSIGNAL);
     if (snt <= 0) return SOCKS5_CLOSING;
+    if (fd == s->client_fd && !buffer_can_read(&s->p2c_write)
+        && s->stm.current->state == SOCKS5_REQUEST_REPLY) {
+        s->stm.current = &s->stm.states[SOCKS5_STREAM];
+        selector_set_interest(key->s, s->client_fd, OP_READ);
+        selector_register(key->s, s->remote_fd, &socks5_handler, OP_READ, s);
+        return SOCKS5_STREAM;
+    }
     buffer_read_adv(wbuf, snt);
 
     selector_set_interest(key->s, fd, buffer_can_read(wbuf) ? OP_WRITE : OP_NOOP);
@@ -372,6 +398,71 @@ static unsigned on_request_forward_write(struct selector_key *key) {
         selector_set_interest(key->s, peer_fd, OP_READ);
     }
     return SOCKS5_REQUEST_REPLY;
+}
+
+static int init_remote_connection(socks5_session *s, struct selector_key *key){
+    fprintf(stderr, "[DEBUG] init_remote_connection() -> rfd=%d\n", s->remote_fd);
+    socks5_request *req = &s->parsers.request.request;
+    char hoststr[INET6_ADDRSTRLEN];
+    const char *name;
+    struct addrinfo hints = {
+        .ai_family   = AF_UNSPEC,
+        .ai_socktype = SOCK_STREAM
+    }, *res;
+
+    switch (req->dst.atyp) {
+      case SOCKS5_ATYP_IPV4:
+        inet_ntop(AF_INET, req->dst.addr.ipv4, hoststr, sizeof(hoststr));
+        name = hoststr;
+        break;
+      case SOCKS5_ATYP_IPV6:
+        inet_ntop(AF_INET6, req->dst.addr.ipv6, hoststr, sizeof(hoststr));
+        name = hoststr;
+        break;
+      case SOCKS5_ATYP_DOMAIN:
+        memcpy(hoststr, req->dst.addr.domain.name, req->dst.addr.domain.len);
+        hoststr[req->dst.addr.domain.len] = '\0';
+        name = hoststr;
+        break;
+      default:
+        return -1;
+    }
+
+    char portstr[6];
+    snprintf(portstr, sizeof(portstr), "%u", req->dst.port);
+
+    int gai = getaddrinfo(name, portstr, &hints, &res);
+    fprintf(stderr, "[DBG] getaddrinfo(%s,%s) = %d\n", name, portstr, gai);
+
+    if (gai != 0) {
+        return -1;
+    }
+    
+
+    int rfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    fprintf(stderr, "[DBG] socket() = %d\n", rfd);
+
+    if (rfd < 0) {
+        freeaddrinfo(res);
+        return -1;
+    }
+    fcntl(rfd, F_SETFL, O_NONBLOCK);
+    int c = connect(rfd, res->ai_addr, res->ai_addrlen);
+    if (c < 0 && errno == EINPROGRESS) {
+        fprintf(stderr, "[DBG] connect() in progress on fd %d\n", rfd);
+    } else if (c < 0) {
+      perror("[ERR] connect()");
+      close(rfd);
+      freeaddrinfo(res);
+      return -1;
+    } else {
+        fprintf(stderr, "[DBG] connect() completed on fd %d\n", rfd);
+    }
+    freeaddrinfo(res);
+    s->remote_fd = rfd;
+    fprintf(stderr, "[DBG] → guardado s->remote_fd = %d\n", s->remote_fd);
+    selector_register(key->s, rfd, &socks5_handler, OP_WRITE, s);
+    return 0;
 }
 
 // CLOSING

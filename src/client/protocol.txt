@@ -1,0 +1,105 @@
+TO_BE_NAMED Protocol Version 1.0
+Author: grupo11
+Date: 2025-06-28
+Status: Draft
+
+1. Introduction
+   TO_BE_NAMED es un protocolo basado en texto, orientado a conexión TCP,
+   para gestionar un servidor proxy y recolectar métricas de operación en tiempo real.
+   Permite obtener estadísticas, modificar configuraciones sin reiniciar y consultar
+   registros de acceso de usuarios.
+
+2. Handshake y Autenticación
+2.1. HELLO
+   Cliente -> Servidor:  HELLO TO_BE_NAMED/1.0
+   Servidor -> Cliente:  200 Welcome to TO_BE_NAMED/1.0
+
+2.2. AUTH
+   Cliente -> Servidor:  AUTH <usuario> <contraseña>
+   Servidor -> Cliente:
+     - 200 OK             (autenticación exitosa)
+     - 401 Unauthorized   (credenciales inválidas)
+
+3. Comandos Principales
+3.1. GET_METRICS
+   Cliente -> Servidor:  GET_METRICS
+   Servidor -> Cliente: 200 OK
+     HISTORICAL_CONNECTIONS: <número>
+     CURRENT_CONNECTIONS:    <número>
+     BYTES_TRANSFERRED:      <número>
+     .                       (fin de respuesta)
+
+3.2. GET_LOGS
+   Cliente -> Servidor:  GET_LOGS
+   Servidor -> Cliente: 200 OK
+     [timestamp] [usuario] [IP_origen] [destino] [bytes]
+     ...
+     .                       (fin de logs)
+
+3.3. POST_CONFIG
+   Cliente -> Servidor:  POST_CONFIG
+     <clave>=<valor>
+     <clave>=<valor>
+     .
+   Servidor -> Cliente:
+     - 200 OK            (configuración aplicada)
+     - 400 Bad Request   (parámetro inválido)
+     - 403 Forbidden     (sin permisos)
+
+   Claves permitidas:
+     - max_io_buffer      (bytes, entero)
+     - add_user           (usuario:contraseña)
+     - remove_user        (usuario)
+     - set_role           (usuario:rol)  # solo admin
+
+4. Formato de Parámetros y Valores
+   - Cada línea tiene la forma <clave>=<valor>.
+   - Se finaliza con una línea que contiene solo ".".
+
+5. Roles y Permisos
+   Tras autenticarse, cada usuario tiene un rol:
+     - admin: puede ejecutar GET_METRICS, GET_LOGS y POST_CONFIG.
+     - user: puede ejecutar sólo GET_METRICS.
+
+5.1. Asignación del primer admin
+   El primer usuario admin se define en un archivo de configuración al iniciar el servidor
+   o mediante la variable de entorno:
+     PROXY_CTRL_SUPERUSER=<usuario>:<contraseña>
+   Este usuario recibe automáticamente rol admin y debe existir antes de aceptar conexiones.
+
+5.2. Promoción de usuarios a admin
+   Solo un usuario con rol admin puede promover o demotar roles de otros usuarios.
+   Para ello, en POST_CONFIG se usa la clave set_role:
+     set_role=<usuario>:<rol>
+   donde <rol> puede ser "user" o "admin".
+   Ejemplo:
+     POST_CONFIG
+     set_role=bob:admin
+     .
+   Tras respuesta 200 OK, el usuario bob adquiere rol admin.
+
+5.3. Restricciones
+   - Los usuarios no pueden cambiar su propio rol.
+   - No es posible revocar el rol admin de un usuario mediante el protocolo; requiere
+     reinicio con nueva variable PROXY_CTRL_SUPERUSER o acceso interno al sistema.
+
+6. Registros de Acceso (Logs)
+   Cada línea de log tiene el formato:
+     [YYYY-MM-DDThh:mm:ssZ] <usuario> <IP_origen> <destino> <bytes>
+   Ejemplo:
+     [2025-06-28T14:32:10Z] alice 192.168.1.10 example.com:80 1024
+
+7. Códigos de Respuesta
+   - 200 OK
+   - 400 Bad Request
+   - 401 Unauthorized
+   - 500 Internal Server Error
+
+8. Extensibilidad y Versionado
+   - Nueva versión se anuncia con HELLO TO_BE_NAMED/<versión>.
+   - Comandos y claves adicionales se agregan sin romper compatibilidad:
+     nuevos comandos, nuevas claves en POST_CONFIG o nuevos códigos de respuesta.
+
+9. Conexión
+   - Tras HELLO y AUTH, la conexión permanece abierta para múltiples comandos.
+   - El servidor puede cerrar la conexión tras un timeout o errores críticos.

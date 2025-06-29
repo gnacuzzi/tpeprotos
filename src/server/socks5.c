@@ -137,8 +137,10 @@ static unsigned on_greet_read(struct selector_key *key) {
             g->rep.version = 0x05;
             g->rep.method = NO_ACCEPTABLE_METHODS;
             for (uint8_t i = 0; i < g->req.nmethods; i++) {
-              if (g->req.methods[i] == NO_AUTH) { g->rep.method = NO_AUTH; break; }
-              if (g->req.methods[i] == USER_PASS) g->rep.method = USER_PASS;
+                if (g->req.methods[i] == USER_PASS) {
+                    g->rep.method = USER_PASS;
+                    break;
+                }
             }
             uint8_t reply[2] = { g->rep.version, g->rep.method };
             for (size_t i = 0; i < sizeof(reply); i++)
@@ -186,7 +188,6 @@ static unsigned on_authentication_read(struct selector_key *key) {
     socks5_authentication *auth = &s->parsers.authentication;
     buffer *buf = &s->c2p_read;
 
-    /* Leer datos desde el socket */
     size_t space;
     uint8_t *dst = buffer_write_ptr(buf, &space);
     ssize_t r = recv(key->fd, dst, space, 0);
@@ -195,37 +196,29 @@ static unsigned on_authentication_read(struct selector_key *key) {
     }
     buffer_write_adv(buf, r);
 
-    /* Parsear */
     bool error = false;
     authentication_idx idx = authentication_parse(auth, buf, &error);
 
-    /* Si el parse falló en formato (version wrong, longitudes, etc) */
     if (error) {
         fprintf(stderr, "[DEBUG] Authentication parse error: %d\n", idx);
-        /* Encolamos STATUS_FAILED y respondemos */
         generate_authentication_response(&s->p2c_write, AUTHENTICATION_STATUS_FAILED);
         selector_set_interest_key(key, OP_WRITE);
         return SOCKS5_METHOD_REPLY;
     }
 
-    /* Si ya terminamos de leer usuario+pass */
     fprintf(stderr, "[DEBUG] Authentication index: %d\n", idx);
     if (idx == AUTHENTICATION_DONE) {
-        /* Validamos credenciales */
         s->user = authenticate_user(&auth->req.cred);
         uint8_t status = (s->user != NULL)
                          ? AUTHENTICATION_STATUS_SUCCESS
                          : AUTHENTICATION_STATUS_FAILED;
 
-        /* Encolamos la respuesta */
         generate_authentication_response(&s->p2c_write, status);
 
-        /* Pasamos a escritura para enviarla */
         selector_set_interest_key(key, OP_WRITE);
         return SOCKS5_METHOD_REPLY;
     }
 
-    /* Si no terminamos aún, volvemos a leer más bytes */
     return SOCKS5_METHOD;
 }
 
@@ -327,8 +320,8 @@ static int fill_bound_address(int fd, socks5_address *addr) {
 }
 
 static unsigned on_request_connect_write(struct selector_key *key) {
-socks5_session *s = key->data;
-    int rfd = key->fd;
+    socks5_session *s = key->data;
+    int rfd = s->remote_fd;
 
     int err=0; socklen_t len=sizeof(err);
     getsockopt(rfd, SOL_SOCKET, SO_ERROR, &err, &len);

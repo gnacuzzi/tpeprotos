@@ -12,6 +12,7 @@
 #include <netdb.h>
 
 #include "metrics.h"
+#include "users.h"
 #include "../../utils/include/stm.h"
 #include "../../utils/include/buffer.h"
 #include "../../utils/include/selector.h"
@@ -34,6 +35,7 @@ typedef struct {
     int sockfd;            
     bool is_connected;     
     bool is_authenticated; 
+    char authenticated_user[MAX_USERNAME_LEN];
     
     uint8_t raw_read_buffer[BUFFER_SIZE];
     uint8_t raw_write_buffer[BUFFER_SIZE];

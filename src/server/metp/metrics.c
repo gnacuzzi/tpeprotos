@@ -22,3 +22,22 @@ uint64_t get_bytes_transferred() {
     return bytes_transferred;
 }
 
+//TODO: ver desde donde llamamos a estas funciones
+void increment_historic_connections() {
+    historic_connections++;
+}
+
+void increment_current_connections() {
+    socks_current_connections++;
+}
+
+void decrement_current_connections() {
+    if (socks_current_connections > 0) {
+        socks_current_connections--;
+    }
+}
+
+void add_bytes_transferred(uint64_t bytes) {
+    bytes_transferred += bytes;
+}
+

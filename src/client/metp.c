@@ -33,8 +33,6 @@ static char * my_strdup(const char *s) {
     return p;
 }
 
-
-
 pc_connect_status proxy_connect(const char *host, unsigned short port, const proxy_user *user) {
     if (is_connected) return PC_SERV_FAIL;
 

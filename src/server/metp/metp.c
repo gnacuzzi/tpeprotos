@@ -142,7 +142,7 @@ static unsigned on_authentication_read(struct selector_key *key) {
             if (cmd && strcmp(cmd, "AUTH") == 0) {
                 char *user = strtok_r(NULL, " \r\n", &saveptr);
                 char *pass = strtok_r(NULL, " \r\n", &saveptr);
-                bool ok = false; //TODO: VERIFY_USER (user && pass && verify_user(user, pass));
+                bool ok = verify_user(user, pass);
 
                 const char *resp = ok
                     ? "200 OK\n"
@@ -156,6 +156,8 @@ static unsigned on_authentication_read(struct selector_key *key) {
 
                 if (ok) {
                     sess->is_authenticated = true;
+                    strncpy(sess->authenticated_user, user, MAX_USERNAME_LEN - 1);
+                    sess->authenticated_user[MAX_USERNAME_LEN - 1] = '\0';
                     state = METP_AUTH_REPLY;
                 } else {
                     state = METP_AUTH_REPLY;
@@ -233,59 +235,126 @@ static unsigned on_request_read(struct selector_key *key) {
             char *cmd = strtok_r(sess->parsers.request.line, " \r\n", &saveptr);
 
             if (cmd && strcmp(cmd, "GET_METRICS") == 0) {
-                char tmp[128];
-                int len = snprintf(tmp, sizeof(tmp),
-                  "200 OK\n"
-                  "HISTORICAL_CONNECTIONS: %u\n"
-                  "CURRENT_CONNECTIONS:    %u\n"
-                  "BYTES_TRANSFERRED:      %" PRIu64 "\n"
-                  ".\n",
-                  get_historic_connections(),
-                  get_socks_current_connections(),
-                  get_bytes_transferred()
-                ); 
+                // todo: ver bien si queremos que todos tengan acceso
+                if (!can_user_execute_command(sess->authenticated_user, "GET_METRICS")) {
+                    const char *err = "403 Forbidden\n";
+                    size_t wcap; 
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    size_t len = strlen(err);
+                    if (len > wcap) len = wcap;
+                    memcpy(out, err, len);
+                    buffer_write_adv(&sess->write_buffer, len);
+                    state = METP_ERROR;
+                } else {
+                    char tmp[128];
+                    int len = snprintf(tmp, sizeof(tmp),
+                      "200 OK\n"
+                      "HISTORICAL_CONNECTIONS: %u\n"
+                      "CURRENT_CONNECTIONS:    %u\n"
+                      "BYTES_TRANSFERRED:      %" PRIu64 "\n"
+                      ".\n",
+                      get_historic_connections(),
+                      get_socks_current_connections(),
+                      get_bytes_transferred()
+                    ); 
 
-                size_t wcap; 
-                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                if ((size_t)len > wcap) len = wcap;
-                memcpy(out, tmp, len);
-                buffer_write_adv(&sess->write_buffer, len);
+                    size_t wcap; 
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    if ((size_t)len > wcap) len = wcap;
+                    memcpy(out, tmp, len);
+                    buffer_write_adv(&sess->write_buffer, len);
 
-                state = METP_REQUEST_REPLY;
+                    state = METP_REQUEST_REPLY;
+                }
             }
             else if (cmd && strcmp(cmd, "GET_LOGS") == 0) {
-                const char *hdr = "200 OK\n";
-                size_t wcap; 
-                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                size_t hlen = strlen(hdr);
-                if (hlen > wcap) hlen = wcap;
-                memcpy(out, hdr, hlen);
-                buffer_write_adv(&sess->write_buffer, hlen);
+                if (!can_user_execute_command(sess->authenticated_user, "GET_LOGS")) {
+                    const char *err = "403 Forbidden\n";
+                    size_t wcap; 
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    size_t len = strlen(err);
+                    if (len > wcap) len = wcap;
+                    memcpy(out, err, len);
+                    buffer_write_adv(&sess->write_buffer, len);
+                    state = METP_ERROR;
+                } else {
+                    const char *hdr = "200 OK\n";
+                    size_t wcap; 
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    size_t hlen = strlen(hdr);
+                    if (hlen > wcap) hlen = wcap;
+                    memcpy(out, hdr, hlen);
+                    buffer_write_adv(&sess->write_buffer, hlen);
 
-                //TODO: Implement GET_LOGS handler
+                    const char *logs_data = get_logs();
+                    if (logs_data && strlen(logs_data) > 0) {
+                        out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                        size_t logs_len = strlen(logs_data);
+                        if (logs_len > wcap) logs_len = wcap;
+                        memcpy(out, logs_data, logs_len);
+                        buffer_write_adv(&sess->write_buffer, logs_len);
+                    }
 
-                const char *dot = ".\n";
-                out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                size_t dlen = strlen(dot);
-                if (dlen > wcap) dlen = wcap;
-                memcpy(out, dot, dlen);
-                buffer_write_adv(&sess->write_buffer, dlen);
+                    const char *dot = ".\n";
+                    out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    size_t dlen = strlen(dot);
+                    if (dlen > wcap) dlen = wcap;
+                    memcpy(out, dot, dlen);
+                    buffer_write_adv(&sess->write_buffer, dlen);
 
-                state = METP_REQUEST_REPLY;
+                    state = METP_REQUEST_REPLY;
+                }
             }
             else if (cmd && strcmp(cmd, "POST_CONFIG") == 0) {
-                
-                //TODO: Implement POST_CONFIG handler
+                if (!can_user_execute_command(sess->authenticated_user, "POST_CONFIG")) {
+                    const char *err = "403 Forbidden\n";
+                    size_t wcap; 
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    size_t len = strlen(err);
+                    if (len > wcap) len = wcap;
+                    memcpy(out, err, len);
+                    buffer_write_adv(&sess->write_buffer, len);
+                    state = METP_ERROR;
+                } else {
+                    static char config_buffer[4096];
+                    static size_t config_pos = 0;
+                    
+                    config_pos = 0;
+                    config_buffer[0] = '\0';
+                    
+                    while (buffer_can_read(&sess->read_buffer)) {
+                        c = buffer_read(&sess->read_buffer);
+                        
+                        if (config_pos < sizeof(config_buffer) - 1) {
+                            config_buffer[config_pos++] = (char)c;
+                        }
+                        
+                        if (c == '\n') {
+                            config_buffer[config_pos] = '\0';
+                            
+                            char *line_end = strrchr(config_buffer, '\n');
+                            if (line_end) {
+                                *line_end = '\0';
+                                if (strcmp(config_buffer, ".") == 0) {
+                                    break;
+                                }
+                                *line_end = '\n'; 
+                            }
+                        }
+                    }
+                    
+                    bool config_ok = apply_configuration(config_buffer);
+                    
+                    const char *resp = config_ok ? "200 OK\n" : "400 Bad Request\n";
+                    size_t wcap; 
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    size_t len = strlen(resp);
+                    if (len > wcap) len = wcap;
+                    memcpy(out, resp, len);
+                    buffer_write_adv(&sess->write_buffer, len);
 
-                const char *resp = "200 OK\n";
-                size_t wcap; 
-                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                size_t len = strlen(resp);
-                if (len > wcap) len = wcap;
-                memcpy(out, resp, len);
-                buffer_write_adv(&sess->write_buffer, len);
-
-                state = METP_REQUEST_REPLY;
+                    state = METP_REQUEST_REPLY;
+                }
             }
             else {
                 const char *err = "400 Bad Request\n";

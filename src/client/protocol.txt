@@ -1,18 +1,18 @@
-TO_BE_NAMED Protocol Version 1.0
+METP Protocol Version 1.0
 Author: grupo11
 Date: 2025-06-28
 Status: Draft
 
 1. Introduction
-   TO_BE_NAMED es un protocolo basado en texto, orientado a conexión TCP,
+   METP es un protocolo basado en texto, orientado a conexión TCP,
    para gestionar un servidor proxy y recolectar métricas de operación en tiempo real.
    Permite obtener estadísticas, modificar configuraciones sin reiniciar y consultar
    registros de acceso de usuarios.
 
 2. Handshake y Autenticación
 2.1. HELLO
-   Cliente -> Servidor:  HELLO TO_BE_NAMED/1.0
-   Servidor -> Cliente:  200 Welcome to TO_BE_NAMED/1.0
+   Cliente -> Servidor:  HELLO METP/1.0
+   Servidor -> Cliente:  200 Welcome to METP/1.0
 
 2.2. AUTH
    Cliente -> Servidor:  AUTH <usuario> <contraseña>
@@ -96,7 +96,7 @@ Status: Draft
    - 500 Internal Server Error
 
 8. Extensibilidad y Versionado
-   - Nueva versión se anuncia con HELLO TO_BE_NAMED/<versión>.
+   - Nueva versión se anuncia con HELLO METP/<versión>.
    - Comandos y claves adicionales se agregan sin romper compatibilidad:
      nuevos comandos, nuevas claves en POST_CONFIG o nuevos códigos de respuesta.
 

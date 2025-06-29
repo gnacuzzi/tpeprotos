@@ -1,4 +1,4 @@
-#include "include/tobenamed.h"
+#include "include/metp.h"
 
 int sockfd = -1; 
 bool is_connected = false; 
@@ -64,7 +64,7 @@ pc_connect_status proxy_connect(const char *host, unsigned short port, const pro
     if (!is_connected) return PC_SERV_FAIL;
 
     char buf[BUFFER_SIZE];
-    send_full(sockfd, "HELLO PROXY-CTRL/1.0\n", 21);
+    send_full(sockfd, "HELLO METP/1.0\n", 21);
     if (recv_line(sockfd, buf, sizeof(buf)) <= 0 ||
         strncmp(buf, "200 ", 4) != 0)
         return PC_SERV_FAIL;

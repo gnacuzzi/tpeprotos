@@ -27,6 +27,8 @@ static unsigned on_closing_write(struct selector_key *key);
 
 static int init_remote_connection(socks5_session *s, struct selector_key *key);
 
+static int generate_authentication_response(buffer *buf, uint8_t status);
+
 static const struct state_definition socks5_states[] = {
     [SOCKS5_GREETING] = {
         .state          = SOCKS5_GREETING,
@@ -179,9 +181,12 @@ static void on_authentication(const unsigned state, struct selector_key *key) {
 
 //AUTH
 static unsigned on_authentication_read(struct selector_key *key) {
+    fprintf(stderr, "[DEBUG] on_authentication_read called\n");
     socks5_session *s = key->data;
     socks5_authentication *auth = &s->parsers.authentication;
     buffer *buf = &s->c2p_read;
+
+    /* Leer datos desde el socket */
     size_t space;
     uint8_t *dst = buffer_write_ptr(buf, &space);
     ssize_t r = recv(key->fd, dst, space, 0);
@@ -190,23 +195,38 @@ static unsigned on_authentication_read(struct selector_key *key) {
     }
     buffer_write_adv(buf, r);
 
-
+    /* Parsear */
     bool error = false;
     authentication_idx idx = authentication_parse(auth, buf, &error);
 
+    /* Si el parse falló en formato (version wrong, longitudes, etc) */
     if (error) {
-        fprintf(stderr, "Authentication error: invalid request\n");
-        return  SOCKS5_ERROR;
-    }
-
-    if( idx == AUTHENTICATION_PASSWD) {
-        s->user = authenticate_user(&auth->req.cred);
-        if (SELECTOR_SUCCESS != selector_set_interest_key(key, OP_WRITE)) {
-            return SOCKS5_ERROR;
-        }
+        fprintf(stderr, "[DEBUG] Authentication parse error: %d\n", idx);
+        /* Encolamos STATUS_FAILED y respondemos */
+        generate_authentication_response(&s->p2c_write, AUTHENTICATION_STATUS_FAILED);
+        selector_set_interest_key(key, OP_WRITE);
         return SOCKS5_METHOD_REPLY;
     }
-    return SOCKS5_METHOD_REPLY;
+
+    /* Si ya terminamos de leer usuario+pass */
+    fprintf(stderr, "[DEBUG] Authentication index: %d\n", idx);
+    if (idx == AUTHENTICATION_DONE) {
+        /* Validamos credenciales */
+        s->user = authenticate_user(&auth->req.cred);
+        uint8_t status = (s->user != NULL)
+                         ? AUTHENTICATION_STATUS_SUCCESS
+                         : AUTHENTICATION_STATUS_FAILED;
+
+        /* Encolamos la respuesta */
+        generate_authentication_response(&s->p2c_write, status);
+
+        /* Pasamos a escritura para enviarla */
+        selector_set_interest_key(key, OP_WRITE);
+        return SOCKS5_METHOD_REPLY;
+    }
+
+    /* Si no terminamos aún, volvemos a leer más bytes */
+    return SOCKS5_METHOD;
 }
 
 static unsigned on_authentication_write(struct selector_key *key) {
@@ -223,6 +243,18 @@ static unsigned on_authentication_write(struct selector_key *key) {
         return SOCKS5_REQUEST;
     }
     return SOCKS5_METHOD_REPLY;
+}
+
+static int generate_authentication_response(buffer *buf, uint8_t status) {
+    size_t available;
+    uint8_t *out = buffer_write_ptr(buf, &available);
+    if (available < 2) {
+        return -1;
+    }
+    out[0] = 0x01;    // versión del sub-protocolo
+    out[1] = status;  // estado de la autenticación
+    buffer_write_adv(buf, 2);
+    return 2;
 }
 
 //REQUEST

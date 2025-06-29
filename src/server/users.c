@@ -125,6 +125,7 @@ bool remove_user(char * name) {
 const struct user *
 authenticate_user(credentials * credentials) {
     for (int i = 0; i < n_users; i++) {
+        fprintf(stderr, "[DEBUG] Authenticating user: %s\n", user_database[i]->name);
         if (compare_users(user_database[i]->name,
                           (char *)credentials->usernme) &&
             compare_users(user_database[i]->pass,

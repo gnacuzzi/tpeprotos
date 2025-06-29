@@ -17,7 +17,7 @@ authentication_idx authentication_parse(socks5_authentication * parser, buffer *
         switch (parser->idx) {
         case AUTHENTICATION_VER:
             parser->req.ver = b;
-            if (b != AUTHENTICATION_VER) {
+            if (b != AUTHENTICATION_VERSION) {
                 parser->idx = AUTHENTICATION_ERROR_VERSION;
                 parser->rep.status = AUTHENTICATION_STATUS_FAILED;
                 *error = true;

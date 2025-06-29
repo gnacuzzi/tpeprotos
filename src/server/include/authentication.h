@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define AUTHENTICATION_VERSION 0x01
+
 static const uint8_t AUTHENTICATION_STATUS_SUCCESS = 0x00;
 static const uint8_t AUTHENTICATION_STATUS_FAILED = 0x01;
 

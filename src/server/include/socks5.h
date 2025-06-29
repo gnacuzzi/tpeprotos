@@ -17,7 +17,8 @@
 #include "../../utils/include/buffer.h"
 #include "../../utils/include/selector.h"
 #include "../../utils/include/stm.h"    
-#include "authentication.h"     
+#include "authentication.h"    
+#include "../../utils/include/args.h" 
 
 #define BUF_SIZE 4096
 
@@ -56,6 +57,8 @@ typedef struct {
 
     struct state_machine stm;
     bool is_closing;
+
+    const struct user * user;
 } socks5_session;
 
 const struct state_definition *get_socks5_states(void);

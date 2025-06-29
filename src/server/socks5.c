@@ -200,12 +200,10 @@ static unsigned on_authentication_read(struct selector_key *key) {
     }
 
     if( idx == AUTHENTICATION_PASSWD) {
-        auth->rep.ver = 0x01;
-        auth->rep.status = AUTHENTICATION_STATUS_SUCCESS;
-        uint8_t reply[2] = { auth->rep.ver, auth->rep.status };
-        for (size_t i = 0; i < sizeof(reply); i++)
-            buffer_write(&s->p2c_write, reply[i]);
-        selector_set_interest_key(key, OP_WRITE);
+        s->user = authenticate_user(&auth->req.cred);
+        if (SELECTOR_SUCCESS != selector_set_interest_key(key, OP_WRITE)) {
+            return SOCKS5_ERROR;
+        }
         return SOCKS5_METHOD_REPLY;
     }
     return SOCKS5_METHOD_REPLY;

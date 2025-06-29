@@ -2,6 +2,7 @@
 #define ARGS_H_kFlmYm1tW9p5npzDr2opQJ9jM8
 
 #include <stdbool.h>
+#include "../../server/include/users.h"
 
 #define MAX_USERS 10
 
@@ -11,7 +12,7 @@ struct users
     char* pass;
 };
 
-struct socks5args
+struct H
 {
     char* socks_addr;
     unsigned short socks_port;

@@ -1,4 +1,5 @@
 #include "include/socks5.h"
+#include "../utils/include/args.h"
 
 #define BUF_SIZE 4096
 #define PORT "1080"
@@ -113,8 +114,13 @@ int create_listener(const char *port) {
     return fd;
 }
 
-int main(void) {
+int main(int argc, char ** argv) {
     signal(SIGPIPE, SIG_IGN); 
+
+    struct socks5args args;
+    parse_args(argc, argv, &args);
+
+    print_users();
 
     selector_init(&(struct selector_init){.signal = SIGALRM});
     fd_selector sel = selector_new(1024); //magic number
@@ -129,6 +135,7 @@ int main(void) {
 
     selector_destroy(sel);
     close(server_fd);
+    free_users(args.users, MAX_USERS);
     return 0;
 }
 

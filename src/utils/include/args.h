@@ -12,7 +12,7 @@ struct users
     char* pass;
 };
 
-struct H
+struct socks5args
 {
     char* socks_addr;
     unsigned short socks_port;

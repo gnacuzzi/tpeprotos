@@ -1,13 +1,13 @@
 #include "include/authentication.h"
 
 void authentication_init(socks5_authentication * parser) {
-    parser->req.ver = 0x01; 
-    parser->req.ulen = 0;   
-    parser->req.plen = 0;   
+    parser->req.ver = 0;
+    parser->req.ulen = 0;
+    parser->req.plen = 0;
     parser->bytes_read = 0;
     parser->bytes_written = 0;
     parser->idx = AUTHENTICATION_VER;
-    parser->rep.ver = 0x01; 
+    parser->rep.ver = 0x01;
     parser->rep.status = AUTHENTICATION_STATUS_SUCCESS;
 }
 
@@ -17,13 +17,13 @@ authentication_idx authentication_parse(socks5_authentication * parser, buffer *
         switch (parser->idx) {
         case AUTHENTICATION_VER:
             parser->req.ver = b;
-            if (b != 0x01) {
+            if (b != AUTHENTICATION_VER) {
+                parser->idx = AUTHENTICATION_ERROR_VERSION;
                 parser->rep.status = AUTHENTICATION_STATUS_FAILED;
                 *error = true;
                 return parser->idx;
             }
             parser->idx = AUTHENTICATION_ULEN;
-            parser->bytes_read = 0;
             break;
 
         case AUTHENTICATION_ULEN:
@@ -40,31 +40,44 @@ authentication_idx authentication_parse(socks5_authentication * parser, buffer *
             parser->req.cred.usernme[parser->bytes_read++] = b;
             if (parser->bytes_read == parser->req.ulen) {
                 parser->req.cred.usernme[parser->bytes_read] = '\0';
-                parser->idx = AUTHENTICATION_PLEN;
                 parser->bytes_read = 0;
+                parser->idx = AUTHENTICATION_PLEN;
             }
             break;
 
         case AUTHENTICATION_PLEN:
             parser->req.plen = b;
             parser->bytes_read = 0;
-            parser->idx = AUTHENTICATION_PASSWD;
             if (b == 0) {
-                // no hay contraseña
                 parser->req.cred.passwd[0] = '\0';
+                parser->idx = AUTHENTICATION_DONE;
                 return parser->idx;
             }
+            parser->idx = AUTHENTICATION_PASSWD;
             break;
 
         case AUTHENTICATION_PASSWD:
             parser->req.cred.passwd[parser->bytes_read++] = b;
             if (parser->bytes_read == parser->req.plen) {
                 parser->req.cred.passwd[parser->bytes_read] = '\0';
+                parser->idx = AUTHENTICATION_DONE;
                 return parser->idx;
             }
             break;
+
+        case AUTHENTICATION_DONE:
+        case AUTHENTICATION_ERROR_VERSION:
+        case AUTHENTICATION_ERROR_OTHER:
+            // Ya estamos en un estado final: salimos
+            return parser->idx;
+
+        default:
+            // Un estado inesperado: marcamos error genérico
+            parser->idx = AUTHENTICATION_ERROR_OTHER;
+            parser->rep.status = AUTHENTICATION_STATUS_FAILED;
+            *error = true;
+            return parser->idx;
         }
     }
     return parser->idx;
 }
-

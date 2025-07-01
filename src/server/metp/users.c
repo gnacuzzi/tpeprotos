@@ -161,6 +161,25 @@ const char *get_logs(void) {
     return log_buffer;
 }
 
+const char *get_users(void) {
+    static char buf[4096];
+    int pos = 0;
+    buf[0] = '\0';
+
+    for (int i = 0; i < user_count; i++) {
+        if (!users[i].is_active) continue;
+        const char *role_str = (users[i].role == ROLE_ADMIN) ? "admin" : "user";
+        int written = snprintf(buf + pos, sizeof(buf) - pos,
+                               "%s %s\n",
+                               users[i].username,
+                               role_str);
+        if (written < 0 || written >= (int)(sizeof(buf) - pos))
+            break;
+        pos += written;
+    }
+    return buf;
+}
+
 void clear_logs(void) {
     log_count = 0;
     log_index = 0;

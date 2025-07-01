@@ -268,7 +268,7 @@ static void respuesta_error(const char *msg, struct selector_key *key) {
 }
 
 
-
+//TODO: agregar manejo de error tipo 500, quizas seria en el handler error
 static unsigned on_request_read(struct selector_key *key) {
     metp_session *sess = key->data;
     fprintf(stderr, "[DEBUG] entra en on_request_read (sock=%d)\n", sess->sockfd);
@@ -292,7 +292,8 @@ static unsigned on_request_read(struct selector_key *key) {
 
             char *saveptr = NULL;
             char *cmd = strtok_r(sess->parsers.request.line, " \r\n", &saveptr);
-
+            
+            //TODO: ADD QUIT            
             if (cmd && strcmp(cmd, "GET_METRICS") == 0) {
                 // todo: ver bien si queremos que todos tengan acceso
                 if (!can_user_execute_command(sess->authenticated_user, "GET_METRICS")) {
@@ -387,6 +388,8 @@ static unsigned on_request_read(struct selector_key *key) {
                 } else if (!can_user_execute_command(sess->authenticated_user, "ADD-USER")) {
                     respuesta_error("403 Forbidden\n", key);
                 } else {
+                    fprintf(stderr, "[DEBUG] intentando agregar usuario: %s\n", user);
+                    fflush(stderr);
                     add_user(user, pass, ROLE_USER);
                     respuesta_ok(key);
                 }
@@ -417,6 +420,39 @@ static unsigned on_request_read(struct selector_key *key) {
                     respuesta_ok(key);
                 }
                 state = METP_REQUEST_REPLY;
+            }
+            //TODO: agregar manejo de error
+            else if (cmd && strcmp(cmd, "USERS") == 0) {
+                if (!can_user_execute_command(sess->authenticated_user, "USERS")) {
+                    respuesta_error("403 Forbidden\n", key);
+                    state = METP_REQUEST_REPLY;
+                } else {
+                    const char *list = get_users();
+                    respuesta_ok(key);
+                    if (*list) {
+                        size_t cap;
+                        uint8_t *out = buffer_write_ptr(&sess->write_buffer, &cap);
+                        size_t len = strlen(list);
+                        if (len > cap) len = cap;
+                        memcpy(out, list, len);
+                        buffer_write_adv(&sess->write_buffer, len);
+                    }
+                    {
+                        const char *dot = ".\n";
+                        size_t cap;
+                        uint8_t *out = buffer_write_ptr(&sess->write_buffer, &cap);
+                        size_t len = 2;
+                        if (len > cap) len = cap;
+                        memcpy(out, dot, len);
+                        buffer_write_adv(&sess->write_buffer, len);
+                    }
+                    state = METP_REQUEST_REPLY;
+                }
+                selector_set_interest_key(key, OP_WRITE);
+            }
+            //TODO: mejorar el manejo de QUIT
+            else if (cmd && strcmp(cmd, "QUIT") == 0) {
+                //HACER
             }
             else {
                 const char *err = "400 Bad Request\n";
@@ -477,12 +513,13 @@ static unsigned on_error_write(struct selector_key *key) {
     size_t count;
     uint8_t *out = buffer_read_ptr(&sess->write_buffer, &count);
     if (count > 0) send(sess->sockfd, out, count, 0);
+    selector_unregister_fd(key->s, sess->sockfd);
     close(sess->sockfd);
+    //falta el free pero creo que aborta si lo agrego
     return METP_DONE;
 }
 
 void set_io_buffer_size(size_t size) {
     (void)size;
 }
-
 

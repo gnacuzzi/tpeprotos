@@ -40,6 +40,7 @@ bool can_user_execute_command(const char *username, const char *command);
 
 void log_access(const char *username, const char *source_ip, const char *destination, uint64_t bytes);
 const char *get_logs(void);
+const char *get_users(void);
 void clear_logs(void);
 
 

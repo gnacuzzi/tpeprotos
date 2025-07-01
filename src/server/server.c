@@ -1,38 +1,45 @@
-#include "include/socks5.h"
+#include "./metp/metp.h"
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
+
 
 #define BUF_SIZE 4096
-#define PORT "1080"
+#define MET_PORT "1080"
 
 static void accept_conn(struct selector_key *key);
 
-static void socks5_read(struct selector_key *key) {
-    socks5_session *s = key->data;
+static void metp_read(struct selector_key *key) {
+    metp_session *s = key->data;
     unsigned next_state = stm_handler_read(&s->stm, key);
     s->stm.current = &s->stm.states[next_state];
 }
 
-static void socks5_write(struct selector_key *key) {
-    socks5_session *s = key->data;
+static void metp_write(struct selector_key *key) {
+    metp_session *s = key->data;
     unsigned next_state = stm_handler_write(&s->stm, key);
     s->stm.current = &s->stm.states[next_state];
 }
 
-static void socks5_block(struct selector_key *key) {
-    socks5_session *s = key->data;
+static void metp_block(struct selector_key *key) {
+    metp_session *s = key->data;
     unsigned next_state = stm_handler_block(&s->stm, key);
     s->stm.current = &s->stm.states[next_state];
 }
 
-static void socks5_close(struct selector_key *key) {
-    socks5_session *s = key->data;
+static void metp_close(struct selector_key *key) {
+    metp_session *s = key->data;
     stm_handler_close(&s->stm, key);
 }
 
-static const struct fd_handler socks5_handler = {
-    .handle_read  = socks5_read,
-    .handle_write = socks5_write,
-    .handle_block = socks5_block, 
-    .handle_close = socks5_close,
+static const struct fd_handler metp_handler = {
+    .handle_read  = metp_read,
+    .handle_write = metp_write,
+    .handle_block = metp_block, 
+    .handle_close = metp_close,
 };
 
 static const struct fd_handler accept_handler = {
@@ -47,27 +54,26 @@ static void accept_conn(struct selector_key *key) {
     if (client_fd < 0) return;
     fcntl(client_fd, F_SETFL, O_NONBLOCK);
 
-    socks5_session *s = calloc(1, sizeof(*s));
-    s->client_fd = client_fd;
-    s->remote_fd = -1;
-    buffer_init(&s->c2p_read, BUF_SIZE, s->raw_c2p_r);
-    buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
-    buffer_init(&s->p2c_read, BUF_SIZE, s->raw_p2c_r);
-    buffer_init(&s->p2c_write, BUF_SIZE, s->raw_p2c_w);
+    metp_session *s = calloc(1, sizeof(*s));
+    s->sockfd           = client_fd;
+    s->is_connected     = true;
+    s->is_authenticated = false;
+    buffer_init(&s->read_buffer,  BUFFER_SIZE, s->raw_read_buffer);
+    buffer_init(&s->write_buffer, BUFFER_SIZE, s->raw_write_buffer);
 
-    const struct state_definition *socks5_states = get_socks5_states();
-    s->stm.states = socks5_states;
-    s->stm.initial = SOCKS5_GREETING;
-    s->stm.max_state = SOCKS5_GREETING_REPLY; //por ahora este es el último estado
+    const struct state_definition *st = get_metp_states();
+    s->stm.states    = st;
+    s->stm.initial   = METP_HELLO;
+    s->stm.max_state = METP_DONE;
     stm_init(&s->stm);
 
-    selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);
+    selector_register(key->s, client_fd, &metp_handler, OP_READ, s);
 
-    if (socks5_states[SOCKS5_GREETING].on_arrival) {
-      struct selector_key sk = *key;
-      sk.fd = client_fd;
-      sk.data = s;
-      socks5_states[SOCKS5_GREETING].on_arrival(SOCKS5_GREETING, &sk);
+    if (st[METP_HELLO].on_arrival) {
+        struct selector_key sk = *key;
+        sk.fd   = client_fd;
+        sk.data = s;
+        st[METP_HELLO].on_arrival(METP_HELLO, &sk);
     }
 }
 
@@ -92,9 +98,11 @@ int create_listener(const char *port) {
 int main(void) {
     signal(SIGPIPE, SIG_IGN); 
 
+    init_metrics();
+    init_users();
     selector_init(&(struct selector_init){.signal = SIGALRM});
     fd_selector sel = selector_new(1024); //magic number
-    int server_fd = create_listener(PORT);
+    int server_fd = create_listener(MET_PORT);
     fcntl(server_fd, F_SETFL, O_NONBLOCK);
 
     selector_register(sel, server_fd, &accept_handler, OP_READ, NULL);
@@ -107,4 +115,3 @@ int main(void) {
     close(server_fd);
     return 0;
 }
-

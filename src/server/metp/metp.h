@@ -27,8 +27,8 @@ typedef enum {
     METP_AUTH_REPLY,
     METP_REQUEST,
     METP_REQUEST_REPLY,
-    METP_DONE,
-    METP_ERROR          
+    METP_ERROR,
+    METP_DONE         
 } metp_state;
 
 typedef struct {

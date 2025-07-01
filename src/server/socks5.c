@@ -280,6 +280,8 @@ static unsigned on_request_read(struct selector_key *key) {
                 if (init_remote_connection(s, key) < 0) {
                     return SOCKS5_ERROR;
                 }
+                selector_set_interest_key(key, OP_NOOP);
+                selector_register(key->s, s->remote_fd, &socks5_handler, OP_WRITE, s);
                 return SOCKS5_REQUEST_CONNECT;
             case SOCKS5_CMD_BIND:
                 selector_set_interest_key(key, OP_WRITE);
@@ -343,11 +345,8 @@ static unsigned on_request_connect_write(struct selector_key *key) {
         buffer_write(&s->p2c_write, out[i]);
     }
     free(out);
-
-    selector_set_interest(key->s, s->client_fd, OP_WRITE); 
-    selector_set_interest(key->s, rfd, OP_READ);   
-
-    s->stm.current = &s->stm.states[SOCKS5_STREAM];
+    selector_set_interest(key->s, s->client_fd, OP_WRITE);
+    printf("[DEBUG] on_request_connect_write: remote_fd=%d, client_fd=%d\n", rfd, s->client_fd);
     return SOCKS5_STREAM;
 }
 

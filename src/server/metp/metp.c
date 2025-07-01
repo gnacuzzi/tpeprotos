@@ -411,6 +411,9 @@ static unsigned on_request_read(struct selector_key *key) {
             break;
         }
     }
+    if (state == METP_REQUEST_REPLY || state == METP_ERROR) {
+        selector_set_interest_key(key, OP_WRITE);
+    }
 
     return state;
 }

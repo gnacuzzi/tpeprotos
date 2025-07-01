@@ -58,4 +58,6 @@ typedef struct {
 
 const struct state_definition *get_metp_states(void);
 
+void set_io_buffer_size(size_t size);
+
 #endif

@@ -166,81 +166,8 @@ void clear_logs(void) {
     log_index = 0;
 }
 
-bool parse_config_line(const char *line) {
-    if (!line) return false;
-    
-    while (isspace(*line)) line++;
-    if (*line == '\0') return true; 
-    
-    char *equals = strchr(line, '=');
-    if (!equals) return false;
-    
-    *equals = '\0';
-    char *key = my_strdup(line);
-    char *value = my_strdup(equals + 1);
-    *equals = '='; 
-    
-    if (!key || !value) {
-        free(key);
-        free(value);
-        return false;
-    }
-    
-    bool result = false;
-    
-    if (strcmp(key, "add_user") == 0) {
-        char *colon = strchr(value, ':');
-        if (colon) {
-            *colon = '\0';
-            char *username = my_strdup(value);
-            char *password = my_strdup(colon + 1);
-            if (username && password) {
-                result = add_user(username, password, ROLE_USER);
-                free(username);
-                free(password);
-            }
-        }
-    } else if (strcmp(key, "remove_user") == 0) {
-        result = remove_user(value);
-    } else if (strcmp(key, "set_role") == 0) {
-        char *colon = strchr(value, ':');
-        if (colon) {
-            *colon = '\0';
-            char *username = my_strdup(value);
-            char *role_str = my_strdup(colon + 1);
-            if (username && role_str) {
-                user_role role = (strcmp(role_str, "admin") == 0) ? ROLE_ADMIN : ROLE_USER;
-                result = set_user_role(username, role);
-                free(username);
-                free(role_str);
-            }
-        }
-    }
-    
-    free(key);
-    free(value);
-    return result;
-}
 
-bool apply_configuration(const char *config_data) {
-    if (!config_data) return false;
-    
-    char *data_copy = my_strdup(config_data);
-    if (!data_copy) return false;
-    
-    char *line = strtok(data_copy, "\n");
-    bool success = true;
-    
-    while (line) {
-        if (strlen(line) > 0 && line[0] != '#') {
-            if (!parse_config_line(line)) {
-                success = false;
-                break;
-            }
-        }
-        line = strtok(NULL, "\n");
-    }
-    
-    free(data_copy);
-    return success;
+user_role user_role_from_string(const char *role_str) {
+    if (strcmp(role_str, "admin") == 0) return ROLE_ADMIN;
+    return ROLE_USER;
 } 

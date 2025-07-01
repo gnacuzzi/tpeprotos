@@ -12,8 +12,8 @@ static void print_usage(const char *prog) {
         "Usage: %s [HOST] [PORT] [USER] [PASSWORD] [OPTION]...\n"
         "\n [HOST] and [PORT] may be specified as '-' to use defaults.\n"
         "\n   -h                                      Prints help and finish.\n"
-        "   GET-LOGS                                Gets proxy logs.\n"
-        "   STATISTICS                              Gets proxy statistics.\n"
+        "   GET_LOGS                                Gets proxy logs.\n"
+        "   GET_METRICS                              Gets proxy statistics.\n"
         "   CHANGE-BUFFER <size>                   Changes the buffer size.\n"
         "   ADD-USER <username> <password>         Adds a user.\n"
         "   DELETE-USER <username>                 Deletes a user.\n"
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "%s\n", pc_response_status_to_string(rst));
         }
     }
-    else if (strcmp(cmd, "STATISTICS") == 0) {
+    else if (strcmp(cmd, "GET-METRICS") == 0) {
         proxy_metrics m;
         rst = proxy_get_metrics(&m);
         if (rst == PC_RES_SUCCESS) {

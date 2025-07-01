@@ -42,7 +42,7 @@ void log_access(const char *username, const char *source_ip, const char *destina
 const char *get_logs(void);
 void clear_logs(void);
 
-bool parse_config_line(const char *line);
-bool apply_configuration(const char *config_data);
+
+user_role user_role_from_string(const char *role_str);
 
 #endif 

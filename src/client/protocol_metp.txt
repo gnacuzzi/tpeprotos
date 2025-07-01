@@ -36,21 +36,34 @@ Status: Draft
      ...
      .                       (fin de logs)
 
-3.3. POST_CONFIG
-   Cliente -> Servidor:  POST_CONFIG
-     <clave>=<valor>
-     <clave>=<valor>
-     .
+3.3. Configuración de comandos
+3.3.1. CHANGE-BUFFER
+   Cliente -> Servidor: CHANGE-BUFFER <size>
    Servidor -> Cliente:
-     - 200 OK            (configuración aplicada)
-     - 400 Bad Request   (parámetro inválido)
+     - 200 OK            (cambio de buffer aplicado)
+     - 400 Bad Request   (tamaño inválido)
      - 403 Forbidden     (sin permisos)
 
-   Claves permitidas:
-     - max_io_buffer      (bytes, entero)
-     - add_user           (usuario:contraseña)
-     - remove_user        (usuario)
-     - set_role           (usuario:rol)  # solo admin
+3.3.2. ADD-USER
+   Cliente -> Servidor: ADD-USER <usuario> <contraseña>
+   Servidor -> Cliente:
+     - 200 OK            (usuario añadido)
+     - 400 Bad Request   (sintaxis inválida o usuario ya existe)
+     - 403 Forbidden     (sin permisos)
+
+3.3.3. DELETE-USER
+   Cliente -> Servidor: DELETE-USER <usuario>
+   Servidor -> Cliente:
+     - 200 OK            (usuario eliminado)
+     - 400 Bad Request   (sintaxis inválida o usuario no existe)
+     - 403 Forbidden     (sin permisos)
+
+3.3.4. SET-ROLE
+   Cliente -> Servidor: SET-ROLE <usuario> <rol>
+   Servidor -> Cliente:
+     - 200 OK            (rol cambiado)
+     - 400 Bad Request   (sintaxis inválida o rol desconocido)
+     - 403 Forbidden     (sin permisos)
 
 4. Formato de Parámetros y Valores
    - Cada línea tiene la forma <clave>=<valor>.
@@ -58,7 +71,7 @@ Status: Draft
 
 5. Roles y Permisos
    Tras autenticarse, cada usuario tiene un rol:
-     - admin: puede ejecutar GET_METRICS, GET_LOGS y POST_CONFIG.
+     - admin: puede ejecutar GET_METRICS, GET_LOGS y las operaciones de configuración.
      - user: puede ejecutar sólo GET_METRICS.
 
 5.1. Asignación del primer admin
@@ -69,13 +82,13 @@ Status: Draft
 
 5.2. Promoción de usuarios a admin
    Solo un usuario con rol admin puede promover o demotar roles de otros usuarios.
-   Para ello, en POST_CONFIG se usa la clave set_role:
-     set_role=<usuario>:<rol>
+Para ello, se usa el comando SET-ROLE:
+   SET-ROLE <usuario> <rol>
    donde <rol> puede ser "user" o "admin".
    Ejemplo:
-     POST_CONFIG
-     set_role=bob:admin
-     .
+
+     SET-ROLE bob admin
+
    Tras respuesta 200 OK, el usuario bob adquiere rol admin.
 
 5.3. Restricciones
@@ -98,7 +111,7 @@ Status: Draft
 8. Extensibilidad y Versionado
    - Nueva versión se anuncia con HELLO METP/<versión>.
    - Comandos y claves adicionales se agregan sin romper compatibilidad:
-     nuevos comandos, nuevas claves en POST_CONFIG o nuevos códigos de respuesta.
+     nuevos comandos o nuevos códigos de respuesta.
 
 9. Conexión
    - Tras HELLO y AUTH, la conexión permanece abierta para múltiples comandos.

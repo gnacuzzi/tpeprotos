@@ -85,57 +85,60 @@ void proxy_close(void) {
 }
 
 
-static pc_response_status do_post_config(const char *body) {
+pc_response_status proxy_set_max_io_buffer(uint64_t bytes) {
+    if (!is_connected) return PC_RES_SERV_FAIL;
+    char buf[64];
+    int n = snprintf(buf, sizeof(buf), "CHANGE-BUFFER %llu\n", (unsigned long long)bytes);
+    if (n < 0 || n >= sizeof(buf)) return PC_RES_CMD_FAIL;
+    if (send_full(sockfd, buf, strlen(buf)) <= 0) return PC_RES_SERV_FAIL;
     char line[BUFFER_SIZE];
-    if (send_full(sockfd, "POST_CONFIG\n", 12) <= 0) 
-        return PC_RES_SERV_FAIL;
-
-    if (send_full(sockfd, body, strlen(body)) <= 0) 
-        return PC_RES_SERV_FAIL;
-
-    if (send_full(sockfd, ".\n", 2) <= 0) 
-        return PC_RES_SERV_FAIL;
-
-    if (recv_line(sockfd, line, sizeof(line)) <= 0) 
-        return PC_RES_SERV_FAIL;
-
+    if (recv_line(sockfd, line, sizeof(line)) <= 0) return PC_RES_SERV_FAIL;
     if (strncmp(line, "200", 3) == 0)      return PC_RES_SUCCESS;
     if (strncmp(line, "400", 3) == 0)      return PC_RES_CMD_FAIL;
     if (strncmp(line, "403", 3) == 0)      return PC_RES_NOT_AUTHORIZED;
     return PC_RES_SERV_FAIL;
 }
 
-
-pc_response_status proxy_set_max_io_buffer(uint64_t bytes) {
-    if (!is_connected) return PC_RES_SERV_FAIL;
-    char buf[64];
-    int n = snprintf(buf, sizeof(buf), "max_io_buffer=%llu\n", (unsigned long long)bytes);
-    if (n < 0 || n >= sizeof(buf)) return PC_RES_CMD_FAIL; 
-    return do_post_config(buf);
-}
-
 pc_response_status proxy_add_user(const proxy_user *u) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char buf[128];
-    int n = snprintf(buf, sizeof(buf), "add_user=%s:%s\n", u->name, u->pass);
+    int n = snprintf(buf, sizeof(buf), "ADD-USER %s %s\n", u->name, u->pass);
     if (n < 0 || n >= sizeof(buf)) return PC_RES_CMD_FAIL;
-    return do_post_config(buf);
+    if (send_full(sockfd, buf, strlen(buf)) <= 0) return PC_RES_SERV_FAIL;
+    char line[BUFFER_SIZE];
+    if (recv_line(sockfd, line, sizeof(line)) <= 0) return PC_RES_SERV_FAIL;
+    if (strncmp(line, "200", 3) == 0)      return PC_RES_SUCCESS;
+    if (strncmp(line, "400", 3) == 0)      return PC_RES_CMD_FAIL;
+    if (strncmp(line, "403", 3) == 0)      return PC_RES_NOT_AUTHORIZED;
+    return PC_RES_SERV_FAIL;
 }
 
 pc_response_status proxy_remove_user(const char *username) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char buf[64];
-    int n = snprintf(buf, sizeof(buf), "remove_user=%s\n", username);
+    int n = snprintf(buf, sizeof(buf), "DELETE-USER %s\n", username);
     if (n < 0 || n >= sizeof(buf)) return PC_RES_CMD_FAIL;
-    return do_post_config(buf);
+    if (send_full(sockfd, buf, strlen(buf)) <= 0) return PC_RES_SERV_FAIL;
+    char line[BUFFER_SIZE];
+    if (recv_line(sockfd, line, sizeof(line)) <= 0) return PC_RES_SERV_FAIL;
+    if (strncmp(line, "200", 3) == 0)      return PC_RES_SUCCESS;
+    if (strncmp(line, "400", 3) == 0)      return PC_RES_CMD_FAIL;
+    if (strncmp(line, "403", 3) == 0)      return PC_RES_NOT_AUTHORIZED;
+    return PC_RES_SERV_FAIL;
 }
 
 pc_response_status proxy_set_role(const char *username, const char *role) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char buf[128];
-    int n = snprintf(buf, sizeof(buf), "set_role=%s:%s\n", username, role);
+    int n = snprintf(buf, sizeof(buf), "SET-ROLE %s %s\n", username, role);
     if (n < 0 || n >= sizeof(buf)) return PC_RES_CMD_FAIL;
-    return do_post_config(buf);
+    if (send_full(sockfd, buf, strlen(buf)) <= 0) return PC_RES_SERV_FAIL;
+    char line[BUFFER_SIZE];
+    if (recv_line(sockfd, line, sizeof(line)) <= 0) return PC_RES_SERV_FAIL;
+    if (strncmp(line, "200", 3) == 0)      return PC_RES_SUCCESS;
+    if (strncmp(line, "400", 3) == 0)      return PC_RES_CMD_FAIL;
+    if (strncmp(line, "403", 3) == 0)      return PC_RES_NOT_AUTHORIZED;
+    return PC_RES_SERV_FAIL;
 }
 
 pc_response_status proxy_get_metrics(proxy_metrics *m) {

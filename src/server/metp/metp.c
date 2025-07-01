@@ -249,6 +249,26 @@ static void on_request(const unsigned state, struct selector_key *key) {
 }
 
 
+static void respuesta_ok(struct selector_key *key) {
+    metp_session *sess = key->data;
+    const char *r = "200 OK\n";
+    size_t wcap; 
+    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+    memcpy(out, r, strlen(r));
+    buffer_write_adv(&sess->write_buffer, strlen(r));
+}
+static void respuesta_error(const char *msg, struct selector_key *key) {
+    metp_session *sess = key->data;
+    size_t wcap; 
+    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+    size_t len = strlen(msg);
+    if (len > wcap) len = wcap;
+    memcpy(out, msg, len);
+    buffer_write_adv(&sess->write_buffer, len);
+}
+
+
+
 static unsigned on_request_read(struct selector_key *key) {
     metp_session *sess = key->data;
     fprintf(stderr, "[DEBUG] entra en on_request_read (sock=%d)\n", sess->sockfd);
@@ -344,56 +364,59 @@ static unsigned on_request_read(struct selector_key *key) {
                     state = METP_REQUEST_REPLY;
                 }
             }
-            else if (cmd && strcmp(cmd, "POST_CONFIG") == 0) {
-                if (!can_user_execute_command(sess->authenticated_user, "POST_CONFIG")) {
-                    const char *err = "403 Forbidden\n";
-                    size_t wcap; 
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    size_t len = strlen(err);
-                    if (len > wcap) len = wcap;
-                    memcpy(out, err, len);
-                    buffer_write_adv(&sess->write_buffer, len);
-                    state = METP_ERROR;
+            else if (cmd && strcmp(cmd, "CHANGE-BUFFER") == 0) {
+                char *size_str = strtok_r(NULL, " \r\n", &saveptr);
+                if (!size_str) {
+                    respuesta_error("400 Bad Request\n", key);
                 } else {
-                    static char config_buffer[4096];
-                    static size_t config_pos = 0;
-                    
-                    config_pos = 0;
-                    config_buffer[0] = '\0';
-                    
-                    while (buffer_can_read(&sess->read_buffer)) {
-                        c = buffer_read(&sess->read_buffer);
-                        
-                        if (config_pos < sizeof(config_buffer) - 1) {
-                            config_buffer[config_pos++] = (char)c;
-                        }
-                        
-                        if (c == '\n') {
-                            config_buffer[config_pos] = '\0';
-                            
-                            char *line_end = strrchr(config_buffer, '\n');
-                            if (line_end) {
-                                *line_end = '\0';
-                                if (strcmp(config_buffer, ".") == 0) {
-                                    break;
-                                }
-                                *line_end = '\n'; 
-                            }
-                        }
+                    long new_size = strtol(size_str, NULL, 10);
+                    if (new_size <= 0) {
+                        respuesta_error("400 Bad Request\n", key);
+                    } else {
+                        set_io_buffer_size((size_t)new_size);
+                        respuesta_ok(key);
                     }
-                    
-                    bool config_ok = apply_configuration(config_buffer);
-                    
-                    const char *resp = config_ok ? "200 OK\n" : "400 Bad Request\n";
-                    size_t wcap; 
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    size_t len = strlen(resp);
-                    if (len > wcap) len = wcap;
-                    memcpy(out, resp, len);
-                    buffer_write_adv(&sess->write_buffer, len);
-
-                    state = METP_REQUEST_REPLY;
                 }
+                state = METP_REQUEST_REPLY;
+            }
+            else if (cmd && strcmp(cmd, "ADD-USER") == 0) {
+                char *user = strtok_r(NULL, " \r\n", &saveptr);
+                char *pass = strtok_r(NULL, " \r\n", &saveptr);
+                if (!user || !pass) {
+                    respuesta_error("400 Bad Request\n", key);
+                } else if (!can_user_execute_command(sess->authenticated_user, "ADD-USER")) {
+                    respuesta_error("403 Forbidden\n", key);
+                } else {
+                    add_user(user, pass, ROLE_USER);
+                    respuesta_ok(key);
+                }
+                state = METP_REQUEST_REPLY;
+            }
+            else if (cmd && strcmp(cmd, "DELETE-USER") == 0) {
+                char *user = strtok_r(NULL, " \r\n", &saveptr);
+                if (!user) {
+                    respuesta_error("400 Bad Request\n", key);
+                } else if (!can_user_execute_command(sess->authenticated_user, "DELETE-USER")) {
+                    respuesta_error("403 Forbidden\n", key);
+                } else {
+                    remove_user(user);
+                    respuesta_ok(key);
+                }
+                state = METP_REQUEST_REPLY;
+            }
+            else if (cmd && strcmp(cmd, "SET-ROLE") == 0) {
+                char *user = strtok_r(NULL, " \r\n", &saveptr);
+                char *role = strtok_r(NULL, " \r\n", &saveptr);
+                if (!user || !role) {
+                    respuesta_error("400 Bad Request\n", key);
+                } else if (!can_user_execute_command(sess->authenticated_user, "SET-ROLE")) {
+                    respuesta_error("403 Forbidden\n", key);
+                } else if (!set_user_role(user, user_role_from_string(role))) {
+                    respuesta_error("400 Bad Request\n", key);
+                } else {
+                    respuesta_ok(key);
+                }
+                state = METP_REQUEST_REPLY;
             }
             else {
                 const char *err = "400 Bad Request\n";
@@ -417,6 +440,7 @@ static unsigned on_request_read(struct selector_key *key) {
 
     return state;
 }
+
 
 static unsigned on_request_write(struct selector_key *key) {
     metp_session *sess = key->data;
@@ -455,6 +479,10 @@ static unsigned on_error_write(struct selector_key *key) {
     if (count > 0) send(sess->sockfd, out, count, 0);
     close(sess->sockfd);
     return METP_DONE;
+}
+
+void set_io_buffer_size(size_t size) {
+    (void)size;
 }
 
 

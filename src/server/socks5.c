@@ -91,6 +91,7 @@ const struct state_definition *get_socks5_states(void) {
 
 //GREETING
 static void on_greet(const unsigned state, struct selector_key *key) {
+    printf("[DBG] Arriving at SOCKS5_GREETING state\n");
     socks5_session *s = key->data;
     s->parsers.greeting.req.version = 0x05; 
     s->parsers.greeting.req.nmethods = 0; 
@@ -102,6 +103,7 @@ static void on_greet(const unsigned state, struct selector_key *key) {
 }
 
 static unsigned on_greet_read(struct selector_key *key) {
+    printf("[DBG] Reading SOCKS5_GREETING state\n");
     socks5_session *s = key->data;
     socks5_greeting *g = &s->parsers.greeting;
     buffer *buf = &s->c2p_read;
@@ -157,6 +159,7 @@ static unsigned on_greet_read(struct selector_key *key) {
 
 
 static unsigned on_greet_write(struct selector_key *key) {
+    printf("[DBG] Writing SOCKS5_GREETING_REPLY state\n");
     socks5_session *s = key->data;
     buffer *buf = &s->p2c_write;
     size_t n; uint8_t *ptr = buffer_read_ptr(buf, &n);
@@ -177,13 +180,14 @@ static unsigned on_greet_write(struct selector_key *key) {
 
 
 static void on_authentication(const unsigned state, struct selector_key *key) {
+    printf("[DBG] Arriving at SOCKS5_METHOD state\n");
     socks5_session *s = key->data;
     authentication_init(&s->parsers.authentication);
 }
 
 //AUTH
 static unsigned on_authentication_read(struct selector_key *key) {
-    fprintf(stderr, "[DEBUG] on_authentication_read called\n");
+    printf("[DBG] Reading SOCKS5_METHOD state\n");
     socks5_session *s = key->data;
     socks5_authentication *auth = &s->parsers.authentication;
     buffer *buf = &s->c2p_read;
@@ -198,15 +202,14 @@ static unsigned on_authentication_read(struct selector_key *key) {
 
     bool error = false;
     authentication_idx idx = authentication_parse(auth, buf, &error);
+    printf("[DBG] Authentication parse returned idx: %d\n", idx);
 
     if (error) {
-        fprintf(stderr, "[DEBUG] Authentication parse error: %d\n", idx);
         generate_authentication_response(&s->p2c_write, AUTHENTICATION_STATUS_FAILED);
         selector_set_interest_key(key, OP_WRITE);
         return SOCKS5_METHOD_REPLY;
     }
 
-    fprintf(stderr, "[DEBUG] Authentication index: %d\n", idx);
     if (idx == AUTHENTICATION_DONE) {
         s->user = authenticate_user(&auth->req.cred);
         uint8_t status = (s->user != NULL)
@@ -223,6 +226,7 @@ static unsigned on_authentication_read(struct selector_key *key) {
 }
 
 static unsigned on_authentication_write(struct selector_key *key) {
+    printf("[DBG] Writing SOCKS5_METHOD_REPLY state\n");
     socks5_session *s = key->data;
     size_t count; 
     uint8_t *bufptr = buffer_read_ptr(&s->p2c_write, &count);
@@ -252,10 +256,12 @@ static int generate_authentication_response(buffer *buf, uint8_t status) {
 
 //REQUEST
 static void on_request(const unsigned state, struct selector_key *key) {
+    printf("[DBG] Arriving at SOCKS5_REQUEST state\n");
     selector_set_interest_key(key, OP_READ);
 }
 
 static unsigned on_request_read(struct selector_key *key) {
+    printf("[DBG] Reading SOCKS5_REQUEST state\n");
     socks5_session *s = key->data;
     buffer         *buf = &s->c2p_read;
     size_t          space;
@@ -278,7 +284,24 @@ static unsigned on_request_read(struct selector_key *key) {
         switch (s->parsers.request.request.cmd) {
             case SOCKS5_CMD_CONNECT:
                 if (init_remote_connection(s, key) < 0) {
-                    return SOCKS5_ERROR;
+                    socks5_reply rep = {
+                        .version = SOCKS5_VERSION,
+                        .rep     = SOCKS5_REP_HOST_UNREACHABLE,
+                        .rsv     = 0x00,
+                    };
+                    rep.bnd.atyp = SOCKS5_ATYP_IPV4;
+                    memset(rep.bnd.addr.ipv4, 0, 4);
+                    rep.bnd.port = 0;
+
+                    uint8_t *out; size_t outlen;
+                    socks5_build_reply(&rep, &out, &outlen);
+                    for (size_t i = 0; i < outlen; i++) {
+                        buffer_write(&s->p2c_write, out[i]);
+                    }
+                    free(out);
+
+                    selector_set_interest_key(key, OP_WRITE);
+                    return SOCKS5_REQUEST_REPLY;
                 }
                 selector_set_interest_key(key, OP_NOOP);
                 selector_register(key->s, s->remote_fd, &socks5_handler, OP_WRITE, s);
@@ -322,6 +345,7 @@ static int fill_bound_address(int fd, socks5_address *addr) {
 }
 
 static unsigned on_request_connect_write(struct selector_key *key) {
+    printf("[DBG] Writing SOCKS5_REQUEST_CONNECT state\n");
     socks5_session *s = key->data;
     int rfd = s->remote_fd;
 
@@ -345,9 +369,10 @@ static unsigned on_request_connect_write(struct selector_key *key) {
         buffer_write(&s->p2c_write, out[i]);
     }
     free(out);
+    s->stm.current = &s->stm.states[SOCKS5_REQUEST_REPLY];
     selector_set_interest(key->s, s->client_fd, OP_WRITE);
-    printf("[DEBUG] on_request_connect_write: remote_fd=%d, client_fd=%d\n", rfd, s->client_fd);
-    return SOCKS5_STREAM;
+    selector_set_interest(key->s, s->remote_fd, OP_READ);
+    return SOCKS5_REQUEST_REPLY;
 }
 
 static unsigned on_request_bind_write(struct selector_key *key) {
@@ -381,6 +406,7 @@ static void on_stream(const unsigned state, struct selector_key *key) {
 }
 
 static unsigned on_request_forward_read(struct selector_key *key) {
+    printf("[DBG] Reading SOCKS5_REQUEST_REPLY state\n");
     socks5_session *s = key->data;
     int fd       = key->fd;
     int peer_fd  = (fd == s->client_fd) ? s->remote_fd : s->client_fd;
@@ -388,6 +414,7 @@ static unsigned on_request_forward_read(struct selector_key *key) {
 
     size_t space; uint8_t *dst = buffer_write_ptr(rbuf, &space);
     ssize_t n = recv(fd, dst, space, 0);
+    printf("[DBG] forward_read fd=%d, n=%zd bytes\\n", fd, n);
     if (n <= 0) return SOCKS5_CLOSING;
     buffer_write_adv(rbuf, n);
 
@@ -397,12 +424,14 @@ static unsigned on_request_forward_read(struct selector_key *key) {
 }
 
 static unsigned on_request_forward_write(struct selector_key *key) {
+    printf("[DBG] Writing SOCKS5_REQUEST_REPLY state\n");
     socks5_session *s = key->data;
     int fd       = key->fd;
     int peer_fd  = (fd == s->client_fd) ? s->remote_fd : s->client_fd;
     buffer *wbuf = (fd == s->client_fd) ? &s->p2c_write : &s->c2p_write;
 
     size_t n; uint8_t *src = buffer_read_ptr(wbuf, &n);
+    printf("[DBG] forward_write fd=%d, bytes_to_send=%zu\\n", fd, n);
     ssize_t snt = send(fd, src, n, MSG_NOSIGNAL);
     if (snt <= 0) return SOCKS5_CLOSING;
     if (fd == s->client_fd && !buffer_can_read(&s->p2c_write)
@@ -423,7 +452,6 @@ static unsigned on_request_forward_write(struct selector_key *key) {
 }
 
 static int init_remote_connection(socks5_session *s, struct selector_key *key){
-    fprintf(stderr, "[DEBUG] init_remote_connection() -> rfd=%d\n", s->remote_fd);
     socks5_request *req = &s->parsers.request.request;
     char hoststr[INET6_ADDRSTRLEN];
     const char *name;
@@ -452,9 +480,8 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
 
     char portstr[6];
     snprintf(portstr, sizeof(portstr), "%u", req->dst.port);
-
     int gai = getaddrinfo(name, portstr, &hints, &res);
-    fprintf(stderr, "[DBG] getaddrinfo(%s,%s) = %d\n", name, portstr, gai);
+    printf("[DBG] Resolving %s:%d returned %d\n", name, req->dst.port, gai);
 
     if (gai != 0) {
         return -1;
@@ -462,7 +489,7 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
     
 
     int rfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    fprintf(stderr, "[DBG] socket() = %d\n", rfd);
+    printf("[DBG] Created socket %d\n", rfd);
 
     if (rfd < 0) {
         freeaddrinfo(res);
@@ -470,19 +497,16 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
     }
     fcntl(rfd, F_SETFL, O_NONBLOCK);
     int c = connect(rfd, res->ai_addr, res->ai_addrlen);
-    if (c < 0 && errno == EINPROGRESS) {
-        fprintf(stderr, "[DBG] connect() in progress on fd %d\n", rfd);
-    } else if (c < 0) {
+    printf("[DBG] Connecting to remote %s:%d returned %d\n", name, req->dst.port, c);
+    if (c < 0 && errno != EINPROGRESS) {
       perror("[ERR] connect()");
       close(rfd);
       freeaddrinfo(res);
       return -1;
-    } else {
-        fprintf(stderr, "[DBG] connect() completed on fd %d\n", rfd);
     }
     freeaddrinfo(res);
     s->remote_fd = rfd;
-    fprintf(stderr, "[DBG] → guardado s->remote_fd = %d\n", s->remote_fd);
+    printf("[DBG] Remote connection initialized, fd: %d\n", rfd);
     selector_register(key->s, rfd, &socks5_handler, OP_WRITE, s);
     return 0;
 }

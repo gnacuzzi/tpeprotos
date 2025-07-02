@@ -1,0 +1,125 @@
+METP Protocol Version 1.0
+Author: grupo11
+Date: 2025-06-28
+Status: Draft
+
+1. Introduction
+   METP es un protocolo basado en texto, orientado a conexión TCP,
+   para gestionar un servidor proxy y recolectar métricas de operación en tiempo real.
+   Permite obtener estadísticas, modificar configuraciones sin reiniciar y consultar
+   registros de acceso de usuarios.
+
+2. Handshake y Autenticación
+2.1. HELLO
+   Cliente -> Servidor:  HELLO METP/1.0
+   Servidor -> Cliente:  200 Welcome to METP/1.0
+
+2.2. AUTH
+   Cliente -> Servidor:  AUTH <usuario> <contraseña>
+   Servidor -> Cliente:
+     - 200 OK             (autenticación exitosa)
+     - 401 Unauthorized   (credenciales inválidas)
+
+3. Comandos Principales
+3.1. GET_METRICS
+   Cliente -> Servidor:  GET_METRICS
+   Servidor -> Cliente: 200 OK
+     HISTORICAL_CONNECTIONS: <número>
+     CURRENT_CONNECTIONS:    <número>
+     BYTES_TRANSFERRED:      <número>
+     .                       (fin de respuesta)
+
+3.2. GET_LOGS
+   Cliente -> Servidor:  GET_LOGS
+   Servidor -> Cliente: 200 OK
+     [timestamp] [usuario] [IP_origen] [destino] [bytes]
+     ...
+     .                       (fin de logs)
+
+3.3. USERS
+   Cliente -> Servidor: USERS
+   Servidor -> Cliente: 200 OK
+    [usuario] [rol]
+    ...
+    .                        (fin de respuesta)
+
+3.4. QUIT
+   Cliente -> Servidor:  QUIT
+   Servidor -> Cliente:  (cierra la conexión y termina la sesión)
+
+3.4. Configuración de comandos
+3.4.1. CHANGE-BUFFER
+   Cliente -> Servidor: CHANGE-BUFFER <size>
+   Servidor -> Cliente:
+     - 200 OK            (cambio de buffer aplicado)
+     - 400 Bad Request   (tamaño inválido)
+     - 403 Forbidden     (sin permisos)
+
+3.4.2. ADD-USER
+   Cliente -> Servidor: ADD-USER <usuario> <contraseña>
+   Servidor -> Cliente:
+     - 200 OK            (usuario añadido)
+     - 400 Bad Request   (sintaxis inválida o usuario ya existe)
+     - 403 Forbidden     (sin permisos)
+
+3.4.3. DELETE-USER
+   Cliente -> Servidor: DELETE-USER <usuario>
+   Servidor -> Cliente:
+     - 200 OK            (usuario eliminado)
+     - 400 Bad Request   (sintaxis inválida o usuario no existe)
+     - 403 Forbidden     (sin permisos)
+
+3.4.4. SET-ROLE
+   Cliente -> Servidor: SET-ROLE <usuario> <rol>
+   Servidor -> Cliente:
+     - 200 OK            (rol cambiado)
+     - 400 Bad Request   (sintaxis inválida o rol desconocido)
+     - 403 Forbidden     (sin permisos)
+
+4. Roles y Permisos
+   Tras autenticarse, cada usuario tiene un rol:
+     - admin: puede ejecutar GET_METRICS, GET_LOGS y las operaciones de configuración.
+     - user: puede ejecutar sólo GET_METRICS.
+
+4.1. Asignación del primer admin
+   El primer usuario admin se define en un archivo de configuración al iniciar el servidor
+   o mediante la variable de entorno:
+     PROXY_CTRL_SUPERUSER=<usuario>:<contraseña>
+   Este usuario recibe automáticamente rol admin y debe existir antes de aceptar conexiones.
+
+4.2. Promoción de usuarios a admin
+   Solo un usuario con rol admin puede promover o demotar roles de otros usuarios.
+Para ello, se usa el comando SET-ROLE:
+   SET-ROLE <usuario> <rol>
+   donde <rol> puede ser "user" o "admin".
+   Ejemplo:
+
+     SET-ROLE bob admin
+
+   Tras respuesta 200 OK, el usuario bob adquiere rol admin.
+
+4.3. Restricciones
+   - Los usuarios no pueden cambiar su propio rol.
+   - No es posible revocar el rol admin de un usuario mediante el protocolo; requiere
+     reinicio con nueva variable PROXY_CTRL_SUPERUSER o acceso interno al sistema.
+
+5. Registros de Acceso (Logs)
+   Cada línea de log tiene el formato:
+     [YYYY-MM-DDThh:mm:ssZ] <usuario> <IP_origen> <destino> <bytes>
+   Ejemplo:
+     [2025-06-28T14:32:10Z] alice 192.168.1.10 example.com:80 1024
+
+6. Códigos de Respuesta
+   - 200 OK
+   - 400 Bad Request
+   - 401 Unauthorized
+   - 500 Internal Server Error
+
+7. Extensibilidad y Versionado
+   - Nueva versión se anuncia con HELLO METP/<versión>.
+   - Comandos y claves adicionales se agregan sin romper compatibilidad:
+     nuevos comandos o nuevos códigos de respuesta.
+
+8. Conexión
+   - Tras HELLO y AUTH, la conexión permanece abierta para múltiples comandos.
+   - El servidor puede cerrar la conexión tras un timeout o errores críticos.

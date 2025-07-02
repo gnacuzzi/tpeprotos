@@ -2,9 +2,8 @@
 #define ARGS_H_kFlmYm1tW9p5npzDr2opQJ9jM8
 
 #include <stdbool.h>
-#include "../../server/include/users.h"
+#include "../../server/metp/users.h"
 
-#define MAX_USERS 10
 
 struct users
 {

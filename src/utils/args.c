@@ -126,7 +126,7 @@ parse_args(const int argc, char** argv, struct socks5args* args)
             {
                 user(optarg, args->users + nusers);
                 nusers++;
-                add_user(args->users[nusers - 1].name, args->users[nusers - 1].pass);
+                add_user(args->users[nusers - 1].name, args->users[nusers - 1].pass, ROLE_USER);
             }
             break;
         case 'v':

@@ -6,7 +6,7 @@ SERVER_DIR := $(SRC_DIR)/server
 CLIENT_DIR := $(SRC_DIR)/client
 TEST_DIR := tests
 
-SERVER_SOURCES := $(wildcard $(SERVER_DIR)/*.c)
+SERVER_SOURCES := $(wildcard $(SERVER_DIR)/*.c) $(wildcard $(SERVER_DIR)/metp/*.c)
 CLIENT_SOURCES := $(wildcard $(CLIENT_DIR)/*.c)
 UTILS_SOURCES := $(wildcard $(UTILS_DIR)/*.c)
 TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c)

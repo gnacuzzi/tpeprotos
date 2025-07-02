@@ -1,8 +1,17 @@
 #include "include/socks5.h"
 #include "../utils/include/args.h"
+#include "./metp/metp.h"
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
+
 
 #define BUF_SIZE 4096
-#define PORT "1080"
+#define S5_PORT "1080"
+#define METP_PORT "8080"
 
 static void accept_conn(struct selector_key *key);
 
@@ -35,6 +44,12 @@ static void socks5_read(struct selector_key *key) {
     s->stm.current = &s->stm.states[next];
 }
 
+static void metp_read(struct selector_key *key) {
+    metp_session *s = key->data;
+    unsigned next_state = stm_handler_read(&s->stm, key);
+    s->stm.current = &s->stm.states[next_state];
+}
+
 static void socks5_write(struct selector_key *key) {
     socks5_session *s = key->data;
     unsigned next = stm_handler_write(&s->stm, key);
@@ -45,18 +60,93 @@ static void socks5_write(struct selector_key *key) {
     s->stm.current = &s->stm.states[next];
 }
 
+static void metp_write(struct selector_key *key) {
+    metp_session *s = key->data;
+    unsigned next_state = stm_handler_write(&s->stm, key);
+    s->stm.current = &s->stm.states[next_state];
+}
+
 static void socks5_block(struct selector_key *key) {
     socks5_session *s = key->data;
     unsigned next_state = stm_handler_block(&s->stm, key);
     s->stm.current = &s->stm.states[next_state];
 }
 
+static void metp_block(struct selector_key *key) {
+    metp_session *s = key->data;
+    unsigned next_state = stm_handler_block(&s->stm, key);
+    s->stm.current = &s->stm.states[next_state];
+}
+
+static void metp_close(struct selector_key *key) {
+    metp_session *s = key->data;
+    stm_handler_close(&s->stm, key);
+}
+
+static const struct fd_handler metp_handler = {
+    .handle_read  = metp_read,
+    .handle_write = metp_write,
+    .handle_block = metp_block, 
+    .handle_close = metp_close,
+};
+
+static void accept_metp(struct selector_key *key) {
+    int client_fd = accept(key->fd, NULL, NULL);
+    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+
+    metp_session *m = calloc(1, sizeof(*m));
+    m->sockfd           = client_fd;
+    m->is_connected     = true;
+    m->is_authenticated = false;
+    buffer_init(&m->read_buffer,  BUFFER_SIZE, m->raw_read_buffer);
+    buffer_init(&m->write_buffer, BUFFER_SIZE, m->raw_write_buffer);
+    m->stm.states    = get_metp_states();
+    m->stm.initial   = METP_HELLO;
+    m->stm.max_state = METP_DONE;
+    stm_init(&m->stm);
+
+    selector_register(key->s, client_fd, &metp_handler, OP_READ, m);
+
+    if (m->stm.states[METP_HELLO].on_arrival) {
+        struct selector_key sk = *key;
+        sk.fd   = client_fd;
+        sk.data = m;
+        m->stm.states[METP_HELLO].on_arrival(METP_HELLO, &sk);
+    }
+}
+
+static const struct fd_handler accept_metp_handler = {
+    .handle_read = accept_metp
+};
 
 const struct fd_handler socks5_handler = {
     .handle_read  = socks5_read,
     .handle_write = socks5_write,
     .handle_block = socks5_block, 
     .handle_close = socks5_close,
+};
+
+static void accept_socks5(struct selector_key *key) {
+    int client_fd = accept(key->fd, NULL, NULL);
+    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+
+    // Inicializo sólo la sesión SOCKS5
+    socks5_session *s = calloc(1, sizeof(*s));
+    s->client_fd = client_fd;  s->remote_fd = -1;  s->is_closing = false;
+    buffer_init(&s->c2p_read,  BUF_SIZE, s->raw_c2p_r);
+    buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
+    buffer_init(&s->p2c_read,  BUF_SIZE, s->raw_p2c_r);
+    buffer_init(&s->p2c_write, BUF_SIZE, s->raw_p2c_w);
+    s->stm.states    = get_socks5_states();
+    s->stm.initial   = SOCKS5_GREETING;
+    s->stm.max_state = SOCKS5_CLOSING;
+    stm_init(&s->stm);
+
+    selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);
+}
+
+static const struct fd_handler accept_socks5_handler = {
+    .handle_read = accept_socks5
 };
 
 static const struct fd_handler accept_handler = {
@@ -79,6 +169,13 @@ static void accept_conn(struct selector_key *key) {
     buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
     buffer_init(&s->p2c_read, BUF_SIZE, s->raw_p2c_r);
     buffer_init(&s->p2c_write, BUF_SIZE, s->raw_p2c_w);
+    
+    metp_session *m = calloc(1, sizeof(*m));
+    m->sockfd           = client_fd;
+    m->is_connected     = true;
+    m->is_authenticated = false;
+    buffer_init(&m->read_buffer,  BUFFER_SIZE, m->raw_read_buffer);
+    buffer_init(&m->write_buffer, BUFFER_SIZE, m->raw_write_buffer);
 
     const struct state_definition *socks5_states = get_socks5_states();
     s->stm.states = socks5_states;
@@ -86,13 +183,19 @@ static void accept_conn(struct selector_key *key) {
     s->stm.max_state = SOCKS5_CLOSING; 
     stm_init(&s->stm);
 
-    selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);
+    const struct state_definition *st = get_metp_states();
+    m->stm.states    = st;
+    m->stm.initial   = METP_HELLO;
+    m->stm.max_state = METP_DONE;
+    stm_init(&m->stm);
 
-    if (socks5_states[SOCKS5_GREETING].on_arrival) {
-      struct selector_key sk = *key;
-      sk.fd = client_fd;
-      sk.data = s;
-      socks5_states[SOCKS5_GREETING].on_arrival(SOCKS5_GREETING, &sk);
+    selector_register(key->s, client_fd, &metp_handler, OP_READ, m);
+
+    if (st[METP_HELLO].on_arrival) {
+        struct selector_key sk = *key;
+        sk.fd   = client_fd;
+        sk.data = m;
+        st[METP_HELLO].on_arrival(METP_HELLO, &sk);
     }
 }
 
@@ -120,22 +223,26 @@ int main(int argc, char ** argv) {
     struct socks5args args;
     parse_args(argc, argv, &args);
 
-    print_users();
-
     selector_init(&(struct selector_init){.signal = SIGALRM});
     fd_selector sel = selector_new(1024); //magic number
-    int server_fd = create_listener(PORT);
-    fcntl(server_fd, F_SETFL, O_NONBLOCK);
 
-    selector_register(sel, server_fd, &accept_handler, OP_READ, NULL);
+    // 1) Listener SOCKS5
+    int s5_fd = create_listener(S5_PORT);
+    fcntl(s5_fd, F_SETFL, O_NONBLOCK);
+    selector_register(sel, s5_fd, &accept_socks5_handler, OP_READ, NULL);
+
+    // 2) Listener METP
+    int m_fd = create_listener(METP_PORT);
+    fcntl(m_fd, F_SETFL, O_NONBLOCK);
+    selector_register(sel, m_fd, &accept_metp_handler, OP_READ, NULL);
 
     while (1) {
         selector_select(sel);
     }
 
     selector_destroy(sel);
-    close(server_fd);
+    close(s5_fd);
+    close(m_fd);
     free_users(args.users, MAX_USERS);
     return 0;
 }
-

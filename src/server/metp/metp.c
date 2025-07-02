@@ -179,7 +179,7 @@ static unsigned on_authentication_read(struct selector_key *key) {
 
                 const char *resp = ok
                     ? "200 OK\n"
-                    : "401 Unauthorized\n";
+                    : "401 Unauthorized. Closing conection.\n";
                 size_t wcap;
                 uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
                 size_t len = strlen(resp);
@@ -195,6 +195,7 @@ static unsigned on_authentication_read(struct selector_key *key) {
                 } else {
                     state = METP_AUTH_REPLY;
                 }
+                if(!ok) state = METP_ERROR;
             } else {
                 const char *resp = "400 Bad Request\n";
                 size_t wcap;
@@ -204,7 +205,7 @@ static unsigned on_authentication_read(struct selector_key *key) {
                 memcpy(out, resp, len);
                 buffer_write_adv(&sess->write_buffer, len);
 
-                state = METP_ERROR;
+                state = METP_ERROR;//TODO: ver si dejamos que vuelva por lo menos 3 veces?
             }
 
             sess->parsers.auth.idx = 0;
@@ -304,7 +305,7 @@ static unsigned on_request_read(struct selector_key *key) {
                     if (len > wcap) len = wcap;
                     memcpy(out, err, len);
                     buffer_write_adv(&sess->write_buffer, len);
-                    state = METP_ERROR;
+                    state = METP_REQUEST_REPLY;
                 } else {
                     char tmp[128];
                     int len = snprintf(tmp, sizeof(tmp),
@@ -336,7 +337,7 @@ static unsigned on_request_read(struct selector_key *key) {
                     if (len > wcap) len = wcap;
                     memcpy(out, err, len);
                     buffer_write_adv(&sess->write_buffer, len);
-                    state = METP_ERROR;
+                    state = METP_REQUEST_REPLY;
                 } else {
                     const char *hdr = "200 OK\n";
                     size_t wcap; 
@@ -452,7 +453,15 @@ static unsigned on_request_read(struct selector_key *key) {
             }
             //TODO: mejorar el manejo de QUIT
             else if (cmd && strcmp(cmd, "QUIT") == 0) {
-                //HACER
+                const char *hdr = "200 OK. Closing conection.\n";
+                size_t wcap; 
+                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                size_t hlen = strlen(hdr);
+                if (hlen > wcap) hlen = wcap;
+                memcpy(out, hdr, hlen);
+                buffer_write_adv(&sess->write_buffer, hlen);
+
+                state = METP_ERROR;
             }
             else {
                 const char *err = "400 Bad Request\n";
@@ -463,7 +472,7 @@ static unsigned on_request_read(struct selector_key *key) {
                 memcpy(out, err, len);
                 buffer_write_adv(&sess->write_buffer, len);
 
-                state = METP_ERROR;
+                state = METP_REQUEST_REPLY;
             }
 
             sess->parsers.request.idx = 0;

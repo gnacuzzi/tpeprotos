@@ -171,6 +171,9 @@ int main(int argc, char ** argv) {
     struct socks5args args;
     parse_args(argc, argv, &args);
 
+    init_metrics();
+    init_users();
+
     selector_init(&(struct selector_init){.signal = SIGALRM});
     fd_selector sel = selector_new(1024); //magic number
 

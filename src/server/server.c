@@ -13,7 +13,6 @@
 #define S5_PORT "1080"
 #define METP_PORT "8080"
 
-static void accept_conn(struct selector_key *key);
 
 //no se si estan bien estas
 static void socks5_close(struct selector_key *key) {
@@ -148,57 +147,6 @@ static void accept_socks5(struct selector_key *key) {
 static const struct fd_handler accept_socks5_handler = {
     .handle_read = accept_socks5
 };
-
-static const struct fd_handler accept_handler = {
-    .handle_read = accept_conn,
-};
-
-
-static void accept_conn(struct selector_key *key) {
-    struct sockaddr_storage addr;
-    socklen_t len = sizeof(addr);
-    int client_fd = accept(key->fd, (struct sockaddr*)&addr, &len);
-    if (client_fd < 0) return;
-    fcntl(client_fd, F_SETFL, O_NONBLOCK);
-
-    socks5_session *s = calloc(1, sizeof(*s));
-    s->client_fd = client_fd;
-    s->remote_fd = -1;
-    s->is_closing = false;
-    buffer_init(&s->c2p_read, BUF_SIZE, s->raw_c2p_r);
-    buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
-    buffer_init(&s->p2c_read, BUF_SIZE, s->raw_p2c_r);
-    buffer_init(&s->p2c_write, BUF_SIZE, s->raw_p2c_w);
-    
-    metp_session *m = calloc(1, sizeof(*m));
-    m->sockfd           = client_fd;
-    m->is_connected     = true;
-    m->is_authenticated = false;
-    buffer_init(&m->read_buffer,  BUFFER_SIZE, m->raw_read_buffer);
-    buffer_init(&m->write_buffer, BUFFER_SIZE, m->raw_write_buffer);
-
-    const struct state_definition *socks5_states = get_socks5_states();
-    s->stm.states = socks5_states;
-    s->stm.initial = SOCKS5_GREETING;
-    s->stm.max_state = SOCKS5_CLOSING; 
-    stm_init(&s->stm);
-
-    const struct state_definition *st = get_metp_states();
-    m->stm.states    = st;
-    m->stm.initial   = METP_HELLO;
-    m->stm.max_state = METP_DONE;
-    stm_init(&m->stm);
-
-    selector_register(key->s, client_fd, &metp_handler, OP_READ, m);
-
-    if (st[METP_HELLO].on_arrival) {
-        struct selector_key sk = *key;
-        sk.fd   = client_fd;
-        sk.data = m;
-        st[METP_HELLO].on_arrival(METP_HELLO, &sk);
-    }
-}
-
 
 int create_listener(const char *port) {
     struct addrinfo hints = {

@@ -301,7 +301,7 @@ static unsigned on_request_read(struct selector_key *key) {
                     free(out);
 
                     selector_set_interest_key(key, OP_WRITE);
-                    return SOCKS5_REQUEST_REPLY;
+                    return SOCKS5_CLOSING;
                 }
                 selector_set_interest_key(key, OP_NOOP);
                 selector_register(key->s, s->remote_fd, &socks5_handler, OP_WRITE, s);
@@ -416,23 +416,25 @@ static void on_stream(const unsigned state, struct selector_key *key) {
 }
 
 static unsigned on_request_forward_read(struct selector_key *key) {
-    printf("[DBG] Reading SOCKS5_REQUEST_REPLY state\n");
     socks5_session *s = key->data;
     int fd       = key->fd;
     int peer_fd  = (fd == s->client_fd) ? s->remote_fd : s->client_fd;
-    buffer *rbuf = (fd == s->client_fd) ? &s->c2p_read : &s->p2c_read;
+    buffer *wbuf = (fd == s->client_fd) ? &s->c2p_write : &s->p2c_write;
 
-    size_t space; uint8_t *dst = buffer_write_ptr(rbuf, &space);
+    size_t space;
+    uint8_t *dst = buffer_write_ptr(wbuf, &space);
     ssize_t n = recv(fd, dst, space, 0);
-    printf("[DBG] forward_read fd=%d, n=%zd bytes\\n", fd, n);
-    if (n <= 0) return SOCKS5_CLOSING;
-    buffer_write_adv(rbuf, n);
+    printf("[DBG] forward_read fd=%d, n=%zd bytes\n", fd, n);
+    if (n <= 0) {
+        return SOCKS5_CLOSING;
+    }
+    buffer_write_adv(wbuf, n);
 
     selector_set_interest(key->s, peer_fd, OP_WRITE);
-    selector_set_interest(key->s, fd, buffer_can_write(rbuf) ? OP_READ : OP_NOOP);
-    fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST_REPLY state, not enough data\n");
-    fflush(stderr);
-    return SOCKS5_REQUEST_REPLY;
+    selector_set_interest(key->s,
+        fd,
+        buffer_can_write(wbuf) ? OP_READ : OP_NOOP);
+    return s->stm.current->state;
 }
 
 static unsigned on_request_forward_write(struct selector_key *key) {
@@ -443,9 +445,15 @@ static unsigned on_request_forward_write(struct selector_key *key) {
     buffer *wbuf = (fd == s->client_fd) ? &s->p2c_write : &s->c2p_write;
 
     size_t n; uint8_t *src = buffer_read_ptr(wbuf, &n);
-    printf("[DBG] forward_write fd=%d, bytes_to_send=%zu\\n", fd, n);
+    printf("[DBG] forward_write fd=%d, bytes_to_send=%zu\n", fd, n);
     ssize_t snt = send(fd, src, n, MSG_NOSIGNAL);
     if (snt <= 0) return SOCKS5_CLOSING;
+    buffer_read_adv(wbuf, snt);
+    selector_set_interest(key->s, fd, buffer_can_read(wbuf) ? OP_WRITE : OP_NOOP);
+    buffer *rbuf = (peer_fd == s->client_fd) ? &s->c2p_write : &s->p2c_write;
+    if (buffer_can_write(rbuf)) {
+        selector_set_interest(key->s, peer_fd, OP_READ);
+    }
     fprintf(stderr, "[DBG] client_fd = %d\n", s->client_fd);
     fprintf(stderr, "[DBG] fd = %d\n", fd);
     fprintf(stderr, "[DBG] snt = %zd\n", snt);
@@ -456,22 +464,22 @@ static unsigned on_request_forward_write(struct selector_key *key) {
     if (fd == s->client_fd && !buffer_can_read(&s->p2c_write)
         && s->stm.current->state == SOCKS5_REQUEST_REPLY) {
         s->stm.current = &s->stm.states[SOCKS5_STREAM];
-        selector_set_interest(key->s, s->client_fd, OP_READ);
+        selector_set_interest_key(key, OP_READ);               // client_fd en key->fd
         selector_register(key->s, s->remote_fd, &socks5_handler, OP_READ, s);
         fprintf(stderr, "[DBG] leaving to SOCKS5_STREAM state, not enough data\n");
         fflush(stderr);
         return SOCKS5_STREAM;
     }
-    buffer_read_adv(wbuf, snt);
-
-    selector_set_interest(key->s, fd, buffer_can_read(wbuf) ? OP_WRITE : OP_NOOP);
-    buffer *rbuf = (fd == s->client_fd) ? &s->c2p_read : &s->p2c_read;
-    if (buffer_can_write(rbuf)) {
-        selector_set_interest(key->s, peer_fd, OP_READ);
+    if (fd == s->client_fd
+        && !buffer_can_read(&s->p2c_write)
+        && s->stm.current->state == SOCKS5_REQUEST_REPLY) {
+        s->stm.current = &s->stm.states[SOCKS5_STREAM];
+        selector_set_interest_key(key, OP_READ);
+        selector_register(key->s, s->remote_fd,
+                          &socks5_handler, OP_READ, s);
     }
-    fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST_REPLY state, not enough data\n");
-    fflush(stderr);
-    return SOCKS5_REQUEST_REPLY;
+
+    return s->stm.current->state;
 }
 
 static int init_remote_connection(socks5_session *s, struct selector_key *key){

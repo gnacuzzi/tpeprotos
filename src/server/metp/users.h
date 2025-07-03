@@ -26,7 +26,7 @@ struct user {
 typedef struct {
     time_t timestamp;
     char username[MAX_USERNAME_LEN];
-    char source_ip[64];
+    char source_ip[64]; //todo: magic number, revisar
     char destination[256];
     uint64_t bytes;
 } access_log;

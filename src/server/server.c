@@ -33,7 +33,7 @@ static void socks5_close(struct selector_key *key) {
         selector_unregister_fd(key->s, s->remote_fd);
         close(s->remote_fd);
     }
-    log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, s->bytes_transferred);
+
     socks5_request_free(&s->parsers.request.request);
     free(s);
 }

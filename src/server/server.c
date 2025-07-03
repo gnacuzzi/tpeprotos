@@ -1,6 +1,7 @@
 #include "include/socks5.h"
 #include "../utils/include/args.h"
 #include "./metp/metp.h"
+#include <arpa/inet.h> //TODO: chequear que sea legal
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -13,8 +14,9 @@
 #define S5_PORT "1080"
 #define METP_PORT "8080"
 
+//TODO: global del archivo, programacion defensiva, mejorar manejo de errores
 
-//no se si estan bien estas
+//TODO: mejorar close
 static void socks5_close(struct selector_key *key) {
     socks5_session *s = key->data;
     if (s->is_closing) {
@@ -23,11 +25,15 @@ static void socks5_close(struct selector_key *key) {
     s->is_closing = true;
     stm_handler_close(&s->stm, key);
     selector_unregister_fd(key->s, s->client_fd);
+    if(s->client_fd >= 0) {
+        decrement_current_connections();
+    }
     close(s->client_fd);
     if (s->remote_fd >= 0) {
         selector_unregister_fd(key->s, s->remote_fd);
         close(s->remote_fd);
     }
+    log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, s->bytes_transferred);
     socks5_request_free(&s->parsers.request.request);
     free(s);
 }
@@ -140,6 +146,22 @@ static void accept_socks5(struct selector_key *key) {
     s->stm.initial   = SOCKS5_GREETING;
     s->stm.max_state = SOCKS5_CLOSING;
     stm_init(&s->stm);
+
+    increment_current_connections();
+    increment_historic_connections();
+    //TODO: dios mio revisa suena a que esta muy mal esto y que el accept no deberia tener
+    //de parametros NULL, NULL
+    struct sockaddr_storage ss; socklen_t sl = sizeof ss;
+    if (getpeername(client_fd, (struct sockaddr*)&ss, &sl) == 0) {
+        if (ss.ss_family == AF_INET) {
+            struct sockaddr_in *in4 = (void*)&ss;
+            inet_ntop(AF_INET, &in4->sin_addr, s->source_ip, sizeof s->source_ip);
+        } else {
+            struct sockaddr_in6 *in6 = (void*)&ss;
+            inet_ntop(AF_INET6, &in6->sin6_addr, s->source_ip, sizeof s->source_ip);
+        }
+    }
+    s->bytes_transferred = 0;
 
     selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);
 }

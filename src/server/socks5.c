@@ -442,6 +442,8 @@ static unsigned on_request_forward_write(struct selector_key *key) {
         return SOCKS5_STREAM;
     }
     buffer_read_adv(wbuf, snt);
+    s->bytes_transferred += snt;
+    add_bytes_transferred(snt);
 
     selector_set_interest(key->s, fd, buffer_can_read(wbuf) ? OP_WRITE : OP_NOOP);
     buffer *rbuf = (fd == s->client_fd) ? &s->c2p_read : &s->p2c_read;
@@ -477,7 +479,7 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
       default:
         return -1;
     }
-
+    
     char portstr[6];
     snprintf(portstr, sizeof(portstr), "%u", req->dst.port);
     int gai = getaddrinfo(name, portstr, &hints, &res);
@@ -507,6 +509,8 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
     freeaddrinfo(res);
     s->remote_fd = rfd;
     printf("[DBG] Remote connection initialized, fd: %d\n", rfd);
+    //TODO: revisar si esta bien esto es para el log de metp
+    snprintf(s->dest_str, sizeof s->dest_str, "%s:%u", name, req->dst.port);
     selector_register(key->s, rfd, &socks5_handler, OP_WRITE, s);
     return 0;
 }

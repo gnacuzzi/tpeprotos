@@ -19,6 +19,7 @@
 #include "../../utils/include/stm.h"    
 #include "authentication.h"    
 #include "../../utils/include/args.h" 
+#include "../metp/metrics.h"
 
 #define BUF_SIZE 4096
 
@@ -40,6 +41,10 @@ typedef struct {
     int client_fd;           
     int remote_fd;           
     socks5_state state;
+
+    char source_ip[64];
+    char dest_str[256];
+    uint64_t bytes_transferred;
 
     // buffers cliente→proxy
     buffer c2p_read, c2p_write;

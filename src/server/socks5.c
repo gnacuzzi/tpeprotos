@@ -457,12 +457,9 @@ static unsigned on_request_forward_write(struct selector_key *key) {
 
     selector_set_interest(key->s, peer_fd, OP_READ);
 
-    unsigned interest = 0;
+    unsigned interest = OP_READ;
     if (buffer_can_read(rbuf)) {
         interest |= OP_WRITE;
-    }
-    if (fd == s->remote_fd) {
-        interest |= OP_READ;
     }
     selector_set_interest_key(key, interest);
 

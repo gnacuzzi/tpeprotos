@@ -166,7 +166,7 @@ int create_listener(const char *port) {
 }
 
 int main(int argc, char ** argv) {
-    signal(SIGPIPE, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN); 
 
     struct socks5args args;
     parse_args(argc, argv, &args);

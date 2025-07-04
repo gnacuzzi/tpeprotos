@@ -492,15 +492,18 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
       case SOCKS5_ATYP_IPV4:
         inet_ntop(AF_INET, req->dst.addr.ipv4, hoststr, sizeof(hoststr));
         name = hoststr;
+        fprintf(stderr, "[DBG] init_remote_connection resolving '%s'\n", name);
         break;
       case SOCKS5_ATYP_IPV6:
         inet_ntop(AF_INET6, req->dst.addr.ipv6, hoststr, sizeof(hoststr));
         name = hoststr;
+        fprintf(stderr, "[DBG] init_remote_connection resolving '%s'\n", name);
         break;
       case SOCKS5_ATYP_DOMAIN:
         memcpy(hoststr, req->dst.addr.domain.name, req->dst.addr.domain.len);
         hoststr[req->dst.addr.domain.len] = '\0';
         name = hoststr;
+        fprintf(stderr, "[DBG] init_remote_connection resolving '%s'\n", name);
         break;
       default:
         return -1;

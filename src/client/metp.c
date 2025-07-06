@@ -89,20 +89,13 @@ pc_response_status proxy_quit(void) {
         return PC_RES_SERV_FAIL;
     }
 
-    printf("[DEBUG client] Enviando comando QUIT\n");
-
-    if (send_full(sockfd, "QUIT\n", strlen("QUIT\n")) <= 0) {
-        printf("[DEBUG client] no pudo hacer el quit\n");
-        return PC_RES_SERV_FAIL;
+    if (send_full(sockfd, "QUIT\n", strlen("QUIT\n")) <= 0) {return PC_RES_SERV_FAIL;
     }
 
     char buf[BUFFER_SIZE];
     if (recv_line(sockfd, buf, sizeof(buf)) <= 0) {
-        printf("[DEBUG client] no pudo leer respuesta del quit\n");
         return PC_RES_SERV_FAIL;
     }
-
-    printf("[DEBUG client] respuesta quit: '%s'\n", buf);
 
     if (strncmp(buf, "200", 3) == 0) {
         printf("Connection closed\n");

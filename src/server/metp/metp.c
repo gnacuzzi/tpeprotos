@@ -10,6 +10,8 @@ static unsigned on_request_write(struct selector_key *key);
 static void on_error_arrival(const unsigned state, struct selector_key *key);
 static unsigned on_error_write(struct selector_key *key);
 
+static size_t io_buffer_size = BUFFER_SIZE;
+
 static const struct state_definition metp_states[] = {
     [METP_HELLO] = {
         .state          = METP_HELLO,
@@ -375,8 +377,11 @@ static unsigned on_request_read(struct selector_key *key) {
                     if (new_size <= 0) {
                         respuesta_error("400 Bad Request\n", key);
                     } else {
-                        set_io_buffer_size((size_t)new_size);
-                        respuesta_ok(key);
+                        if (!set_io_buffer_size((size_t)new_size)) {
+                            respuesta_error("400 Bad Request\n", key);
+                        } else {
+                            respuesta_ok(key);
+                        };
                     }
                 }
                 state = METP_REQUEST_REPLY;
@@ -549,7 +554,14 @@ static unsigned on_error_write(struct selector_key *key) {
     return METP_DONE;
 }
 
-void set_io_buffer_size(size_t size) {
-    (void)size;
+bool set_io_buffer_size(size_t size) {
+    if (size == 0 || size > MAX_BUFFER_SIZE)
+        return false;
+    io_buffer_size = size;
+    return true;
+}
+
+size_t get_io_buffer_size(void) {
+    return io_buffer_size;
 }
 

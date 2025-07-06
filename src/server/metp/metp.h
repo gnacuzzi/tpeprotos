@@ -18,6 +18,7 @@
 #include "../../utils/include/selector.h"
 
 #define BUFFER_SIZE 1024
+#define MAX_BUFFER_SIZE 16384
 #define METP_VERSION  "METP/1.0"
 
 typedef enum {
@@ -59,6 +60,7 @@ typedef struct {
 
 const struct state_definition *get_metp_states(void);
 
-void set_io_buffer_size(size_t size);
+bool set_io_buffer_size(size_t size);
+size_t get_io_buffer_size(void);
 
 #endif

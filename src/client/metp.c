@@ -238,23 +238,22 @@ void free_proxy_log_list(proxy_log_list *L) {
     free(L->entries);
 }
 
-//TODO: cambiar a ingles?
 const char* pc_connect_status_to_string(pc_connect_status status) {
     switch (status) {
-        case PC_SUCCESS:     return "Conexión exitosa";
-        case PC_SERV_FAIL:   return "Fallo del servidor al conectar";
-        case PC_AUTH_FAIL:   return "Fallo de autenticación";
-        default:             return "Estado de conexión desconocido";
+        case PC_SUCCESS:     return "Connection successful";
+        case PC_SERV_FAIL:   return "Server failed to connect";
+        case PC_AUTH_FAIL:   return "Authentication failed";
+        default:             return "Unknown connection status";
     }
 }
 
 const char* pc_response_status_to_string(pc_response_status status) {
     switch (status) {
-        case PC_RES_SUCCESS:          return "Operación exitosa";
-        case PC_RES_SERV_FAIL:        return "Fallo del servidor en la operación";
-        case PC_RES_CMD_FAIL:         return "Comando inválido o mal formado";
-        case PC_RES_NOT_AUTHORIZED:   return "No autorizado para ejecutar el comando";
-        default:                      return "Respuesta desconocida";
+        case PC_RES_SUCCESS:          return "Operation successful";
+        case PC_RES_SERV_FAIL:        return "Server failed during operation";
+        case PC_RES_CMD_FAIL:         return "Invalid or malformed command";
+        case PC_RES_NOT_AUTHORIZED:   return "Not authorized to execute command";
+        default:                      return "Unknown response";
     }
 }
 

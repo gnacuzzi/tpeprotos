@@ -294,8 +294,7 @@ static unsigned on_request_read(struct selector_key *key) {
             char *saveptr = NULL;
             char *cmd = strtok_r(sess->parsers.request.line, " \r\n", &saveptr);
             fprintf(stderr, "[DEBUG] comando recibido: '%s'\n", cmd ? cmd : "NULL");
-            
-            //TODO: ADD QUIT            
+
             if (cmd && strcmp(cmd, "GET_METRICS") == 0) {
                 // todo: ver bien si queremos que todos tengan acceso
                 if (!can_user_execute_command(sess->authenticated_user, "GET_METRICS")) {
@@ -452,7 +451,7 @@ static unsigned on_request_read(struct selector_key *key) {
                 }
                 selector_set_interest_key(key, OP_WRITE);
             }
-            //TODO: mejorar el manejo de QUIT
+
             else if (cmd && strcmp(cmd, "QUIT") == 0) {
                 fprintf(stderr, "[DEBUG] comando QUIT detectado\n");
                 const char *hdr = "200 OK. Closing conection.\n";

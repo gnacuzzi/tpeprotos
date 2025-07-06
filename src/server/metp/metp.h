@@ -18,7 +18,7 @@
 #include "../../utils/include/selector.h"
 
 #define BUFFER_SIZE 1024
-#define MAX_BUFFER_SIZE 16384
+#define MAX_BUFFER_SIZE 2048
 #define METP_VERSION  "METP/1.0"
 
 typedef enum {

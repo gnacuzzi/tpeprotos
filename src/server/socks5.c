@@ -433,6 +433,7 @@ static unsigned on_request_forward_read(struct selector_key *key) {
 
     if (s->user != NULL) {
         update_bytes_transferred(s->log_id, n);
+        add_bytes_transferred(n);
     }
 
 

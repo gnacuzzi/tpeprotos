@@ -36,7 +36,6 @@ void decrement_current_connections() {
     }
 }
 
-//TODO: usar en stream
 void add_bytes_transferred(uint64_t bytes) {
     bytes_transferred += bytes;
 }

@@ -62,7 +62,7 @@ pc_connect_status proxy_connect(const char *host, unsigned short port, const pro
     if (!is_connected) return PC_SERV_FAIL;
 
     char buf[BUFFER_SIZE];
-    send_full(sockfd, "HELLO METP/1.0\n", 21);
+    send_full(sockfd, "HELLO METP/1.0\n", strlen("HELLO METP/1.0\n"));
     if (recv_line(sockfd, buf, sizeof(buf)) <= 0 ||
         strncmp(buf, "200 ", 4) != 0)
         return PC_SERV_FAIL;
@@ -82,6 +82,34 @@ void proxy_close(void) {
         sockfd = -1;
         is_connected = false;
     }
+}
+
+pc_response_status proxy_quit(void) {
+    if (!is_connected) {
+        return PC_RES_SERV_FAIL;
+    }
+
+    printf("[DEBUG client] Enviando comando QUIT\n");
+
+    if (send_full(sockfd, "QUIT\n", strlen("QUIT\n")) <= 0) {
+        printf("[DEBUG client] no pudo hacer el quit\n");
+        return PC_RES_SERV_FAIL;
+    }
+
+    char buf[BUFFER_SIZE];
+    if (recv_line(sockfd, buf, sizeof(buf)) <= 0) {
+        printf("[DEBUG client] no pudo leer respuesta del quit\n");
+        return PC_RES_SERV_FAIL;
+    }
+
+    printf("[DEBUG client] respuesta quit: '%s'\n", buf);
+
+    if (strncmp(buf, "200", 3) == 0) {
+        printf("Connection closed\n");
+        return PC_RES_SUCCESS;
+    }
+
+    return PC_RES_CMD_FAIL;
 }
 
 
@@ -145,7 +173,7 @@ pc_response_status proxy_get_metrics(proxy_metrics *m) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char line[BUFFER_SIZE];
 
-    if (send_full(sockfd, "GET_METRICS\n", 12) <= 0)
+    if (send_full(sockfd, "GET_METRICS\n", strlen("GET_METRICS\n")) <= 0)
         return PC_RES_SERV_FAIL;
 
     if (recv_line(sockfd, line, sizeof(line)) <= 0 ||
@@ -168,7 +196,7 @@ pc_response_status proxy_get_logs(proxy_log_list *L) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char line[BUFFER_SIZE];
 
-    if (send_full(sockfd, "GET_LOGS\n", 9) <= 0)
+    if (send_full(sockfd, "GET_LOGS\n", strlen("GET_LOGS\n")) <= 0)
         return PC_RES_SERV_FAIL;
 
     if (recv_line(sockfd, line, sizeof(line)) <= 0 ||

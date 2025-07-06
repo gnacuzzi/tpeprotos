@@ -34,7 +34,8 @@ typedef enum {
 typedef struct {
     int sockfd;            
     bool is_connected;     
-    bool is_authenticated; 
+    bool is_authenticated;
+    bool must_close;
     char authenticated_user[MAX_USERNAME_LEN];
     
     uint8_t raw_read_buffer[BUFFER_SIZE];

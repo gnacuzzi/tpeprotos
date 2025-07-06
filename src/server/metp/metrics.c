@@ -22,7 +22,6 @@ uint64_t get_bytes_transferred() {
     return bytes_transferred;
 }
 
-//TODO: ver desde donde llamamos a estas funciones
 void increment_historic_connections() {
     historic_connections++;
 }
@@ -37,6 +36,7 @@ void decrement_current_connections() {
     }
 }
 
+//TODO: usar en stream
 void add_bytes_transferred(uint64_t bytes) {
     bytes_transferred += bytes;
 }

@@ -124,18 +124,22 @@ bool can_user_execute_command(const char *username, const char *command) {
     return false;
 }
 
-void log_access(const char *username, const char *source_ip, const char *destination, uint64_t bytes) {
-    if (!username || !source_ip || !destination) return;
-    
+int log_access(const char *username, const char *source_ip, const char *destination, uint64_t bytes) {
+    if (!username || !source_ip || !destination) return -1;
+
     logs[log_index].timestamp = time(NULL);
     strncpy(logs[log_index].username, username, MAX_USERNAME_LEN - 1);
     strncpy(logs[log_index].source_ip, source_ip, 63);
     strncpy(logs[log_index].destination, destination, 255);
     logs[log_index].bytes = bytes;
-    
+
+    int this_index = log_index;
     log_index = (log_index + 1) % 1000;
     if (log_count < 1000) log_count++;
+
+    return this_index;
 }
+
 
 const char *get_logs(void) {
     static char log_buffer[32768]; 
@@ -160,6 +164,12 @@ const char *get_logs(void) {
     
     return log_buffer;
 }
+
+void update_bytes_transferred(int log_id, uint64_t bytes) {
+    if (log_id < 0) return;
+    logs[log_id].bytes += bytes;
+}
+
 
 const char *get_users(void) {
     static char buf[4096];

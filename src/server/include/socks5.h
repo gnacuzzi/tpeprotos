@@ -64,6 +64,7 @@ typedef struct {
     bool is_closing;
 
     struct user * user;
+    int log_id;
 } socks5_session;
 
 const struct state_definition *get_socks5_states(void);

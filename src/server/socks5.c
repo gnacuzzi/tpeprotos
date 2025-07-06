@@ -431,6 +431,11 @@ static unsigned on_request_forward_read(struct selector_key *key) {
     fprintf(stderr, "[DBG] forward_read  fd=%d → %zd bytes\n", fd, n);
     buffer_write_adv(wbuf, n);
 
+    if (s->user != NULL) {
+        update_bytes_transferred(s->log_id, n);
+    }
+
+
     selector_set_interest(key->s, peer_fd, OP_WRITE);
     selector_set_interest_key(key,
         buffer_can_write(wbuf) ? OP_READ : OP_NOOP);

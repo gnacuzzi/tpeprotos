@@ -39,8 +39,9 @@ bool remove_user(const char *username);
 bool set_user_role(const char *username, user_role role);
 bool can_user_execute_command(const char *username, const char *command);
 
-void log_access(const char *username, const char *source_ip, const char *destination, uint64_t bytes);
+int log_access(const char *username, const char *source_ip, const char *destination, uint64_t bytes);
 const char *get_logs(void);
+void update_bytes_transferred(int log_id, uint64_t bytes);
 const char *get_users(void);
 void clear_logs(void);
 

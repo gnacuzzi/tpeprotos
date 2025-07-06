@@ -57,6 +57,7 @@ typedef struct {
 
 pc_connect_status proxy_connect(const char *host, unsigned short port, const proxy_user *user);
 void proxy_close(void);
+pc_response_status proxy_quit(void);
 
 pc_response_status proxy_get_metrics(proxy_metrics *m);
 pc_response_status proxy_get_logs (proxy_log_list *L);

@@ -67,9 +67,26 @@ static void socks5_write(struct selector_key *key) {
 
 static void metp_write(struct selector_key *key) {
     metp_session *s = key->data;
+
+    if (s == NULL) return;
+
     unsigned next_state = stm_handler_write(&s->stm, key);
+
+    if (next_state == METP_DONE) {
+        fprintf(stderr, "[DEBUG] metp_write: no actualizo current porque es DONE\n");
+
+        selector_unregister_fd(key->s, key->fd);
+        close(key->fd);
+        fprintf(stderr, "[DEBUG] metp_write: liberando sess (sock=%d)\n", key->fd);
+        free(s);
+        key->data = NULL;
+
+        return;
+    }
+
     s->stm.current = &s->stm.states[next_state];
 }
+
 
 static void socks5_block(struct selector_key *key) {
     socks5_session *s = key->data;
@@ -103,6 +120,7 @@ static void accept_metp(struct selector_key *key) {
     m->sockfd           = client_fd;
     m->is_connected     = true;
     m->is_authenticated = false;
+    m->must_close = false;
     buffer_init(&m->read_buffer,  BUFFER_SIZE, m->raw_read_buffer);
     buffer_init(&m->write_buffer, BUFFER_SIZE, m->raw_write_buffer);
     m->stm.states    = get_metp_states();

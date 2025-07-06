@@ -62,7 +62,7 @@ pc_connect_status proxy_connect(const char *host, unsigned short port, const pro
     if (!is_connected) return PC_SERV_FAIL;
 
     char buf[BUFFER_SIZE];
-    send_full(sockfd, "HELLO METP/1.0\n", 21);
+    send_full(sockfd, "HELLO METP/1.0\n", strlen("HELLO METP/1.0\n"));
     if (recv_line(sockfd, buf, sizeof(buf)) <= 0 ||
         strncmp(buf, "200 ", 4) != 0)
         return PC_SERV_FAIL;
@@ -82,6 +82,27 @@ void proxy_close(void) {
         sockfd = -1;
         is_connected = false;
     }
+}
+
+pc_response_status proxy_quit(void) {
+    if (!is_connected) {
+        return PC_RES_SERV_FAIL;
+    }
+
+    if (send_full(sockfd, "QUIT\n", strlen("QUIT\n")) <= 0) {return PC_RES_SERV_FAIL;
+    }
+
+    char buf[BUFFER_SIZE];
+    if (recv_line(sockfd, buf, sizeof(buf)) <= 0) {
+        return PC_RES_SERV_FAIL;
+    }
+
+    if (strncmp(buf, "200", 3) == 0) {
+        printf("Connection closed\n");
+        return PC_RES_SUCCESS;
+    }
+
+    return PC_RES_CMD_FAIL;
 }
 
 
@@ -145,7 +166,7 @@ pc_response_status proxy_get_metrics(proxy_metrics *m) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char line[BUFFER_SIZE];
 
-    if (send_full(sockfd, "GET_METRICS\n", 12) <= 0)
+    if (send_full(sockfd, "GET_METRICS\n", strlen("GET_METRICS\n")) <= 0)
         return PC_RES_SERV_FAIL;
 
     if (recv_line(sockfd, line, sizeof(line)) <= 0 ||
@@ -168,7 +189,7 @@ pc_response_status proxy_get_logs(proxy_log_list *L) {
     if (!is_connected) return PC_RES_SERV_FAIL;
     char line[BUFFER_SIZE];
 
-    if (send_full(sockfd, "GET_LOGS\n", 9) <= 0)
+    if (send_full(sockfd, "GET_LOGS\n", strlen("GET_LOGS\n")) <= 0)
         return PC_RES_SERV_FAIL;
 
     if (recv_line(sockfd, line, sizeof(line)) <= 0 ||
@@ -210,23 +231,22 @@ void free_proxy_log_list(proxy_log_list *L) {
     free(L->entries);
 }
 
-//TODO: cambiar a ingles?
 const char* pc_connect_status_to_string(pc_connect_status status) {
     switch (status) {
-        case PC_SUCCESS:     return "Conexión exitosa";
-        case PC_SERV_FAIL:   return "Fallo del servidor al conectar";
-        case PC_AUTH_FAIL:   return "Fallo de autenticación";
-        default:             return "Estado de conexión desconocido";
+        case PC_SUCCESS:     return "Connection successful";
+        case PC_SERV_FAIL:   return "Server failed to connect";
+        case PC_AUTH_FAIL:   return "Authentication failed";
+        default:             return "Unknown connection status";
     }
 }
 
 const char* pc_response_status_to_string(pc_response_status status) {
     switch (status) {
-        case PC_RES_SUCCESS:          return "Operación exitosa";
-        case PC_RES_SERV_FAIL:        return "Fallo del servidor en la operación";
-        case PC_RES_CMD_FAIL:         return "Comando inválido o mal formado";
-        case PC_RES_NOT_AUTHORIZED:   return "No autorizado para ejecutar el comando";
-        default:                      return "Respuesta desconocida";
+        case PC_RES_SUCCESS:          return "Operation successful";
+        case PC_RES_SERV_FAIL:        return "Server failed during operation";
+        case PC_RES_CMD_FAIL:         return "Invalid or malformed command";
+        case PC_RES_NOT_AUTHORIZED:   return "Not authorized to execute command";
+        default:                      return "Unknown response";
     }
 }
 

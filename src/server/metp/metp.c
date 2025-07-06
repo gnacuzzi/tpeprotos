@@ -10,6 +10,8 @@ static unsigned on_request_write(struct selector_key *key);
 static void on_error_arrival(const unsigned state, struct selector_key *key);
 static unsigned on_error_write(struct selector_key *key);
 
+static size_t io_buffer_size = BUFFER_SIZE;
+
 static const struct state_definition metp_states[] = {
     [METP_HELLO] = {
         .state          = METP_HELLO,
@@ -293,8 +295,8 @@ static unsigned on_request_read(struct selector_key *key) {
 
             char *saveptr = NULL;
             char *cmd = strtok_r(sess->parsers.request.line, " \r\n", &saveptr);
-            
-            //TODO: ADD QUIT            
+            fprintf(stderr, "[DEBUG] comando recibido: '%s'\n", cmd ? cmd : "NULL");
+
             if (cmd && strcmp(cmd, "GET_METRICS") == 0) {
                 // todo: ver bien si queremos que todos tengan acceso
                 if (!can_user_execute_command(sess->authenticated_user, "GET_METRICS")) {
@@ -375,8 +377,11 @@ static unsigned on_request_read(struct selector_key *key) {
                     if (new_size <= 0) {
                         respuesta_error("400 Bad Request\n", key);
                     } else {
-                        set_io_buffer_size((size_t)new_size);
-                        respuesta_ok(key);
+                        if (!set_io_buffer_size((size_t)new_size)) {
+                            respuesta_error("400 Bad Request\n", key);
+                        } else {
+                            respuesta_ok(key);
+                        };
                     }
                 }
                 state = METP_REQUEST_REPLY;
@@ -451,8 +456,9 @@ static unsigned on_request_read(struct selector_key *key) {
                 }
                 selector_set_interest_key(key, OP_WRITE);
             }
-            //TODO: mejorar el manejo de QUIT
+
             else if (cmd && strcmp(cmd, "QUIT") == 0) {
+                fprintf(stderr, "[DEBUG] comando QUIT detectado\n");
                 const char *hdr = "200 OK. Closing conection.\n";
                 size_t wcap; 
                 uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
@@ -461,7 +467,8 @@ static unsigned on_request_read(struct selector_key *key) {
                 memcpy(out, hdr, hlen);
                 buffer_write_adv(&sess->write_buffer, hlen);
 
-                state = METP_ERROR;
+                sess->must_close = true;
+                state = METP_REQUEST_REPLY;
             }
             else {
                 const char *err = "400 Bad Request\n";
@@ -483,6 +490,9 @@ static unsigned on_request_read(struct selector_key *key) {
         selector_set_interest_key(key, OP_WRITE);
     }
 
+    selector_set_interest_key(key, OP_WRITE);
+    fprintf(stderr, "[DEBUG] selector_set_interest_key(OP_WRITE) ejecutado para QUIT\n");
+
     return state;
 }
 
@@ -490,16 +500,32 @@ static unsigned on_request_read(struct selector_key *key) {
 static unsigned on_request_write(struct selector_key *key) {
     metp_session *sess = key->data;
     fprintf(stderr, "[DEBUG] entra en on_request_write (sock=%d)\n", sess->sockfd);
+    fprintf(stderr, "[DEBUG] must_close = %s, can_read = %s (sock=%d)\n",
+        sess->must_close ? "true" : "false",
+        buffer_can_read(&sess->write_buffer) ? "yes" : "no",
+        sess->sockfd);
     fflush(stderr);
-    size_t count;
 
+    size_t count;
     uint8_t *out = buffer_read_ptr(&sess->write_buffer, &count);
-    ssize_t w = send(sess->sockfd, out, count, 0);
-    if (w <= 0) {
-        return METP_ERROR;
+    if (count > 0) {
+        fprintf(stderr, "[DEBUG] on_request_write por QUIT: intentando enviar %zu bytes\n", count);
+        ssize_t w = send(sess->sockfd, out, count, 0);
+        fprintf(stderr, "[DEBUG] enviados %zd bytes\n", w);
+        if (w <= 0) return METP_ERROR;
+        buffer_read_adv(&sess->write_buffer, w);
     }
 
-    buffer_read_adv(&sess->write_buffer, w);
+    if (sess->must_close && !buffer_can_read(&sess->write_buffer)) {
+        fprintf(stderr, "[DEBUG] cerrando conexión por QUIT\n");
+
+        struct selector_key sk = *key;  // copiamos el key por si key->data desaparece
+        selector_unregister_fd(sk.s, sk.fd);
+        close(sk.fd);
+        fprintf(stderr, "[DEBUG] liberando sess (sock=%d)\n", sk.fd);
+
+        return METP_DONE;
+    }
 
     if (!buffer_can_read(&sess->write_buffer)) {
         selector_set_interest_key(key, OP_READ);
@@ -528,7 +554,14 @@ static unsigned on_error_write(struct selector_key *key) {
     return METP_DONE;
 }
 
-void set_io_buffer_size(size_t size) {
-    (void)size;
+bool set_io_buffer_size(size_t size) {
+    if (size == 0 || size > MAX_BUFFER_SIZE)
+        return false;
+    io_buffer_size = size;
+    return true;
+}
+
+size_t get_io_buffer_size(void) {
+    return io_buffer_size;
 }
 

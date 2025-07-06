@@ -99,6 +99,7 @@ int main(int argc, char **argv) {
         break;
     }
 
+    proxy_quit();
     proxy_close();
     return 0;
 }

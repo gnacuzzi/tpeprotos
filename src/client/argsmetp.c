@@ -78,7 +78,7 @@ void parsemetp_args(int argc, char **argv, metpargs *args) {
         {"sr",      required_argument, 0, 'r'},
         {0,0,0,0}
     };
-    const char *optstring = "hv:p:u:gmc:a:d:r:";
+    const char *optstring = "hvp:u:gmc:a:d:r:";
 
     while ((opt = getopt_long(argc, argv, optstring, long_opts, NULL)) != -1) {
         switch (opt) {

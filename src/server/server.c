@@ -15,23 +15,31 @@
 #define METP_PORT "8080"
 
 //TODO: global del archivo, programacion defensiva, mejorar manejo de errores
-
 //TODO: mejorar close
 static void socks5_close(struct selector_key *key) {
+    if (key == NULL || key->data == NULL) {
+        return;
+    }
     socks5_session *s = key->data;
     if (s->is_closing) {
-        return;  
+        return;
     }
     s->is_closing = true;
+    fprintf(stderr, "Closing SOCKS5 session for fd %d\n", s->client_fd);
+
     stm_handler_close(&s->stm, key);
-    selector_unregister_fd(key->s, s->client_fd);
-    if(s->client_fd >= 0) {
-        decrement_current_connections();
-    }
-    close(s->client_fd);
+
     if (s->remote_fd >= 0) {
         selector_unregister_fd(key->s, s->remote_fd);
         close(s->remote_fd);
+        s->remote_fd = -1;
+    }
+
+    if (s->client_fd >= 0) {
+        selector_unregister_fd(key->s, s->client_fd);
+        close(s->client_fd);
+        decrement_current_connections();
+        s->client_fd = -1;
     }
 
     socks5_request_free(&s->parsers.request.request);
@@ -103,6 +111,7 @@ static void metp_block(struct selector_key *key) {
 static void metp_close(struct selector_key *key) {
     metp_session *s = key->data;
     stm_handler_close(&s->stm, key);
+    fprintf(stderr, "Closing METP session for fd %d\n", key->fd);
 }
 
 static const struct fd_handler metp_handler = {
@@ -114,7 +123,15 @@ static const struct fd_handler metp_handler = {
 
 static void accept_metp(struct selector_key *key) {
     int client_fd = accept(key->fd, NULL, NULL);
-    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+    if (client_fd < 0) {
+        perror("accept() failed");
+        return;
+    }
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) < 0) {
+        perror("fcntl() failed");
+        close(client_fd);
+        return;
+    }
 
     metp_session *m = calloc(1, sizeof(*m));
     m->sockfd           = client_fd;
@@ -128,7 +145,12 @@ static void accept_metp(struct selector_key *key) {
     m->stm.max_state = METP_DONE;
     stm_init(&m->stm);
 
-    selector_register(key->s, client_fd, &metp_handler, OP_READ, m);
+    if (selector_register(key->s, client_fd, &metp_handler, OP_READ, m) != SELECTOR_SUCCESS) {
+        fprintf(stderr, "Failed to register METP client fd\n");
+        free(m);
+        close(client_fd);
+        return;
+    }
 
     if (m->stm.states[METP_HELLO].on_arrival) {
         struct selector_key sk = *key;
@@ -181,12 +203,18 @@ static void accept_socks5(struct selector_key *key) {
     }
     s->bytes_transferred = 0;
 
-    selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);
+    if (selector_register(key->s, client_fd, &socks5_handler, OP_READ, s) != SELECTOR_SUCCESS) {
+        fprintf(stderr, "Failed to register SOCKS5 client fd\n");
+        free(s);
+        close(client_fd);
+        decrement_current_connections(); 
+    }
 }
 
 static const struct fd_handler accept_socks5_handler = {
     .handle_read = accept_socks5
 };
+
 
 int create_listener(const char *port) {
     struct addrinfo hints = {
@@ -204,7 +232,6 @@ int create_listener(const char *port) {
     freeaddrinfo(res);
     return fd;
 }
-
 int main(int argc, char ** argv) {
     signal(SIGPIPE, SIG_IGN); 
 
@@ -219,16 +246,23 @@ int main(int argc, char ** argv) {
 
     // 1) Listener SOCKS5
     int s5_fd = create_listener(S5_PORT);
+    if (s5_fd < 0) {
+        perror("Failed to create SOCKS5 listener");
+        exit(EXIT_FAILURE);
+    }
     fcntl(s5_fd, F_SETFL, O_NONBLOCK);
     selector_register(sel, s5_fd, &accept_socks5_handler, OP_READ, NULL);
 
     // 2) Listener METP
     int m_fd = create_listener(METP_PORT);
-    fcntl(m_fd, F_SETFL, O_NONBLOCK);
-    selector_register(sel, m_fd, &accept_metp_handler, OP_READ, NULL);
+    if (m_fd < 0) {
+        perror("Failed to create METP listener");
+        close(s5_fd); 
+        exit(EXIT_FAILURE);
 
     while (1) {
         selector_select(sel);
+    }
     }
 
     selector_destroy(sel);
@@ -237,3 +271,4 @@ int main(int argc, char ** argv) {
     free_users(args.users, MAX_USERS);
     return 0;
 }
+

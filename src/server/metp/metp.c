@@ -298,76 +298,53 @@ static unsigned on_request_read(struct selector_key *key) {
             fprintf(stderr, "[DEBUG] comando recibido: '%s'\n", cmd ? cmd : "NULL");
 
             if (cmd && strcmp(cmd, "GET_METRICS") == 0) {
-                // todo: ver bien si queremos que todos tengan acceso
                 if (!can_user_execute_command(sess->authenticated_user, "GET_METRICS")) {
-                    const char *err = "403 Forbidden\n";
-                    size_t wcap; 
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    size_t len = strlen(err);
-                    if (len > wcap) len = wcap;
-                    memcpy(out, err, len);
-                    buffer_write_adv(&sess->write_buffer, len);
-                    state = METP_REQUEST_REPLY;
+                    respuesta_error("403 Forbidden\n", key);
                 } else {
-                    char tmp[128];
+                    static char tmp[128];
                     int len = snprintf(tmp, sizeof(tmp),
-                      "200 OK\n"
-                      "HISTORICAL_CONNECTIONS: %u\n"
-                      "CURRENT_CONNECTIONS:    %u\n"
-                      "BYTES_TRANSFERRED:      %" PRIu64 "\n"
-                      ".\n",
-                      get_historic_connections(),
-                      get_socks_current_connections(),
-                      get_bytes_transferred()
-                    ); 
+                    "HISTORICAL_CONNECTIONS: %u\n"
+                        "CURRENT_CONNECTIONS:    %u\n"
+                        "BYTES_TRANSFERRED:      %" PRIu64 "\n",
+                        get_historic_connections(),
+                        get_socks_current_connections(),
+                        get_bytes_transferred()
+                    );
 
-                    size_t wcap; 
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    if ((size_t)len > wcap) len = wcap;
-                    memcpy(out, tmp, len);
-                    buffer_write_adv(&sess->write_buffer, len);
+                    sess->send_ptr = tmp;
+                    sess->send_remaining = len;
+                    sess->sending_data = true;
 
-                    state = METP_REQUEST_REPLY;
-                }
-            }
-            else if (cmd && strcmp(cmd, "GET_LOGS") == 0) {
-                if (!can_user_execute_command(sess->authenticated_user, "GET_LOGS")) {
-                    const char *err = "403 Forbidden\n";
-                    size_t wcap; 
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    size_t len = strlen(err);
-                    if (len > wcap) len = wcap;
-                    memcpy(out, err, len);
-                    buffer_write_adv(&sess->write_buffer, len);
-                    state = METP_REQUEST_REPLY;
-                } else {
                     const char *hdr = "200 OK\n";
-                    size_t wcap; 
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
                     size_t hlen = strlen(hdr);
-                    if (hlen > wcap) hlen = wcap;
+                    size_t wcap;
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    if (wcap >= hlen) {
+                        memcpy(out, hdr, hlen);
+                        buffer_write_adv(&sess->write_buffer, hlen);
+                    }
+            }
+
+                state = METP_REQUEST_REPLY;
+            }
+            else if (strcmp(cmd, "GET_LOGS") == 0) {
+                const char *logs_data = get_logs();
+                sess->send_ptr = logs_data;
+                sess->send_remaining = strlen(logs_data);
+                sess->sending_data = true;
+
+                const char *hdr = "200 OK\n";
+                size_t hlen = strlen(hdr);
+                size_t wcap;
+                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                if (wcap >= hlen) {
                     memcpy(out, hdr, hlen);
                     buffer_write_adv(&sess->write_buffer, hlen);
-
-                    const char *logs_data = get_logs();
-                    if (logs_data && strlen(logs_data) > 0) {
-                        out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                        size_t logs_len = strlen(logs_data);
-                        if (logs_len > wcap) logs_len = wcap;
-                        memcpy(out, logs_data, logs_len);
-                        buffer_write_adv(&sess->write_buffer, logs_len);
-                    }
-
-                    const char *dot = ".\n";
-                    out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    size_t dlen = strlen(dot);
-                    if (dlen > wcap) dlen = wcap;
-                    memcpy(out, dot, dlen);
-                    buffer_write_adv(&sess->write_buffer, dlen);
-
-                    state = METP_REQUEST_REPLY;
                 }
+
+                state = METP_REQUEST_REPLY;
             }
+
             else if (cmd && strcmp(cmd, "CHANGE-BUFFER") == 0) {
                 char *size_str = strtok_r(NULL, " \r\n", &saveptr);
                 if (!size_str) {
@@ -379,9 +356,12 @@ static unsigned on_request_read(struct selector_key *key) {
                     } else {
                         if (!set_io_buffer_size((size_t)new_size)) {
                             respuesta_error("400 Bad Request\n", key);
+                        } else if (!resize_metp_buffers(sess, (size_t)new_size)) {
+                            respuesta_error("500 Internal Server Error\n", key);
                         } else {
                             respuesta_ok(key);
-                        };
+                        }
+
                     }
                 }
                 state = METP_REQUEST_REPLY;
@@ -516,6 +496,39 @@ static unsigned on_request_write(struct selector_key *key) {
         buffer_read_adv(&sess->write_buffer, w);
     }
 
+    if (sess->sending_data && !buffer_can_read(&sess->write_buffer)) {
+        size_t wcap;
+        uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+        size_t to_send = sess->send_remaining;
+
+        if (to_send > wcap) {
+            to_send = wcap;
+        }
+
+        if (to_send > 0) {
+            memcpy(out, sess->send_ptr, to_send);
+            buffer_write_adv(&sess->write_buffer, to_send);
+            sess->send_ptr += to_send;
+            sess->send_remaining -= to_send;
+        }
+
+        if (sess->send_remaining == 0) {
+            const char *dot = ".\n";
+            size_t dlen = strlen(dot);
+            out = buffer_write_ptr(&sess->write_buffer, &wcap);
+            if (wcap >= dlen) {
+                memcpy(out, dot, dlen);
+                buffer_write_adv(&sess->write_buffer, dlen);
+                sess->sending_data = false;
+            }
+        }
+
+        selector_set_interest_key(key, OP_WRITE);
+        return METP_REQUEST_REPLY;
+    }
+
+
+
     if (sess->must_close && !buffer_can_read(&sess->write_buffer)) {
         fprintf(stderr, "[DEBUG] cerrando conexión por QUIT\n");
 
@@ -565,3 +578,39 @@ size_t get_io_buffer_size(void) {
     return io_buffer_size;
 }
 
+bool resize_metp_buffers(metp_session *s, size_t new_size) {
+    if (!s || new_size == 0 || new_size > MAX_BUFFER_SIZE) {
+        return false;
+    }
+
+    size_t read_len, write_len;
+    uint8_t *read_data  = buffer_read_ptr(&s->read_buffer, &read_len);
+    uint8_t *write_data = buffer_read_ptr(&s->write_buffer, &write_len);
+
+    uint8_t *new_read  = malloc(new_size);
+    uint8_t *new_write = malloc(new_size);
+    if (!new_read || !new_write) {
+        free(new_read); free(new_write);
+        return false;
+    }
+
+    buffer new_rbuf, new_wbuf;
+    buffer_init(&new_rbuf, new_size, new_read);
+    buffer_init(&new_wbuf, new_size, new_write);
+
+    for (size_t i = 0; i < read_len && buffer_can_write(&new_rbuf); i++)
+        buffer_write(&new_rbuf, read_data[i]);
+
+    for (size_t i = 0; i < write_len && buffer_can_write(&new_wbuf); i++)
+        buffer_write(&new_wbuf, write_data[i]);
+
+    free(s->raw_read_buffer);
+    free(s->raw_write_buffer);
+    s->raw_read_buffer = new_read;
+    s->raw_write_buffer = new_write;
+    s->read_buffer = new_rbuf;
+    s->write_buffer = new_wbuf;
+    s->buffer_size = new_size;
+
+    return true;
+}

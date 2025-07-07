@@ -39,10 +39,15 @@ typedef struct {
     bool must_close;
     char authenticated_user[MAX_USERNAME_LEN];
     
-    uint8_t raw_read_buffer[BUFFER_SIZE];
-    uint8_t raw_write_buffer[BUFFER_SIZE];
+    uint8_t *raw_read_buffer;
+    uint8_t *raw_write_buffer;
+    size_t buffer_size;
     buffer read_buffer;
     buffer write_buffer;
+
+    const char *send_ptr;
+    size_t send_remaining;
+    bool sending_data;
 
     union {
         struct {
@@ -62,5 +67,6 @@ const struct state_definition *get_metp_states(void);
 
 bool set_io_buffer_size(size_t size);
 size_t get_io_buffer_size(void);
+bool resize_metp_buffers(metp_session *s, size_t new_size);
 
 #endif

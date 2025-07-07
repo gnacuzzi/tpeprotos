@@ -78,6 +78,14 @@ static void metp_write(struct selector_key *key) {
         selector_unregister_fd(key->s, key->fd);
         close(key->fd);
         fprintf(stderr, "[DEBUG] metp_write: liberando sess (sock=%d)\n", key->fd);
+        if (s->raw_read_buffer != NULL) {
+            free(s->raw_read_buffer);
+            s->raw_read_buffer = NULL;
+        }
+        if (s->raw_write_buffer != NULL) {
+            free(s->raw_write_buffer);
+            s->raw_write_buffer = NULL;
+        }
         free(s);
         key->data = NULL;
 
@@ -103,6 +111,16 @@ static void metp_block(struct selector_key *key) {
 static void metp_close(struct selector_key *key) {
     metp_session *s = key->data;
     stm_handler_close(&s->stm, key);
+
+    if (s->raw_read_buffer != NULL) {
+        free(s->raw_read_buffer);
+        s->raw_read_buffer = NULL;
+    }
+    if (s->raw_write_buffer != NULL) {
+        free(s->raw_write_buffer);
+        s->raw_write_buffer = NULL;
+    }
+
 }
 
 static const struct fd_handler metp_handler = {
@@ -121,8 +139,25 @@ static void accept_metp(struct selector_key *key) {
     m->is_connected     = true;
     m->is_authenticated = false;
     m->must_close = false;
-    buffer_init(&m->read_buffer,  BUFFER_SIZE, m->raw_read_buffer);
-    buffer_init(&m->write_buffer, BUFFER_SIZE, m->raw_write_buffer);
+
+    size_t size = get_io_buffer_size();
+    m->raw_read_buffer = malloc(size);
+    m->raw_write_buffer = malloc(size);
+    m->buffer_size = size;
+
+    //aca creo q deberia ir un mensaje de error
+    if (!m->raw_read_buffer || !m->raw_write_buffer) {
+        close(client_fd);
+        free(m->raw_read_buffer);
+        free(m->raw_write_buffer);
+        free(m);
+        return;
+    }
+
+    buffer_init(&m->read_buffer, size, m->raw_read_buffer);
+    buffer_init(&m->write_buffer, size, m->raw_write_buffer);
+
+
     m->stm.states    = get_metp_states();
     m->stm.initial   = METP_HELLO;
     m->stm.max_state = METP_DONE;

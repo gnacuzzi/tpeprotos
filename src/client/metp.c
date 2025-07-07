@@ -192,9 +192,15 @@ pc_response_status proxy_get_logs(proxy_log_list *L) {
     if (send_full(sockfd, "GET_LOGS\n", strlen("GET_LOGS\n")) <= 0)
         return PC_RES_SERV_FAIL;
 
-    if (recv_line(sockfd, line, sizeof(line)) <= 0 ||
-        strncmp(line, "200", 3) != 0)
+    if (recv_line(sockfd, line, sizeof(line)) <= 0) {
+        return PC_RES_SERV_FAIL;
+    }
+    if (strncmp(line, "200", 3) == 0) {
+    } else if (strncmp(line, "403", 3) == 0) {
+        return PC_RES_NOT_AUTHORIZED;
+    } else {
         return PC_RES_CMD_FAIL;
+    }
 
     size_t cap = 16, cnt = 0;
     L->entries = malloc(cap * sizeof(*L->entries));

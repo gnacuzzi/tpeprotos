@@ -12,8 +12,6 @@
 
 
 #define BUF_SIZE 4096
-#define S5_PORT "1080"
-#define METP_PORT "8080"
 
 //TODO: global del archivo, programacion defensiva, mejorar manejo de errores
 
@@ -266,14 +264,14 @@ static const struct fd_handler accept_socks5_handler = {
     .handle_read = accept_socks5
 };
 
-int create_listener(const char *port) {
+int create_listener(const char *addr, const char *port) {
     struct addrinfo hints = {
         .ai_family = AF_INET,
         .ai_socktype = SOCK_STREAM,
         .ai_flags = AI_PASSIVE,
     }, *res;
 
-    if (getaddrinfo(NULL, port, &hints, &res) != 0) {
+    if (getaddrinfo(addr, port, &hints, &res) != 0) {
         perror("getaddrinfo failed");
         return -1;
     }
@@ -320,6 +318,13 @@ int main(int argc, char ** argv) {
     init_metrics();
     init_users();
 
+    for (int i = 0; i < MAX_USERS; i++) {
+        if (args.users[i].name == NULL) {
+            break;
+        }
+        add_user(args.users[i].name, args.users[i].pass, ROLE_USER);
+    }
+
     selector_init(&(struct selector_init){.signal = SIGALRM});
     fd_selector sel = selector_new(1024); //magic number
     if (sel == NULL) {
@@ -327,10 +332,15 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    // Todo: chequear
+    char socks_port_str[8], mng_port_str[8];
+    snprintf(socks_port_str, sizeof(socks_port_str), "%u", args.socks_port);
+    snprintf(mng_port_str, sizeof(mng_port_str), "%u", args.mng_port);
+
     // 1) Listener SOCKS5
-    int s5_fd = create_listener(S5_PORT);
+    int s5_fd = create_listener(args.socks_addr, socks_port_str);
     if (s5_fd == -1) {
-        fprintf(stderr, "Failed to create SOCKS5 listener on port %s\n", S5_PORT);
+        fprintf(stderr, "Failed to create SOCKS5 listener on %s:%s\n", args.socks_addr, socks_port_str);
         selector_destroy(sel);
         return 1;
     }
@@ -350,9 +360,9 @@ int main(int argc, char ** argv) {
     }
 
     // 2) Listener METP
-    int m_fd = create_listener(METP_PORT);
+    int m_fd = create_listener(args.mng_addr, mng_port_str);
     if (m_fd == -1) {
-        fprintf(stderr, "Failed to create METP listener on port %s\n", METP_PORT);
+        fprintf(stderr, "Failed to create METP listener on %s:%s\n", args.mng_addr, mng_port_str);
         close(s5_fd);
         selector_destroy(sel);
         return 1;
@@ -381,6 +391,6 @@ int main(int argc, char ** argv) {
     selector_destroy(sel);
     close(s5_fd);
     close(m_fd);
-    free_users(args.users, MAX_USERS);
+    free_users(); //TODO: en realidad no liberamos nada, chequear
     return 0;
 }

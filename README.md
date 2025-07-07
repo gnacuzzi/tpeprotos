@@ -29,9 +29,37 @@ export PROXY_CTRL_SUPERUSER=admin:password123
 # Ejecutar con configuración por defecto
 ./bin/socks5d
 
-# Ejecutar con argumentos personalizados
-./bin/socks5d -h 0.0.0.0 -p 1080
+# Mostrar ayuda
+./bin/socks5d -h
+
+# Mostrar versión
+./bin/socks5d -v
+
+# Configurar direcciones y puertos personalizados
+./bin/socks5d -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080
+
+# Agregar usuarios desde línea de comandos
+./bin/socks5d -u admin:password123 -u user1:pass123 -u user2:pass456
+
+# Deshabilitar disectores (opción -N)
+./bin/socks5d -N
+
+# Ejemplo completo con todas las opciones
+./bin/socks5d -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080 -u admin:password123 -u user1:pass123
 ```
+
+### Opciones del Servidor
+
+| Opción | Descripción | Valor por defecto |
+|--------|-------------|-------------------|
+| `-h` | Imprime la ayuda y termina | - |
+| `-v` | Imprime información sobre la versión | - |
+| `-l <addr>` | Dirección donde servirá el proxy SOCKS | 0.0.0.0 |
+| `-L <addr>` | Dirección donde servirá el servicio de management | 127.0.0.1 |
+| `-p <port>` | Puerto entrante conexiones SOCKS | 1080 |
+| `-P <port>` | Puerto entrante conexiones configuración | 8080 |
+| `-u <name>:<pass>` | Usuario y contraseña (hasta 10) | - |
+| `-N` | Deshabilitar disectores | Habilitados |
 
 ### 3. Usar el Cliente METP
 
@@ -88,6 +116,7 @@ Servidor -> Cliente: 200 OK (o 401 Unauthorized)
 |---------|-------------|----------|
 | `GET_METRICS` | Obtener estadísticas | User, Admin |
 | `GET_LOGS` | Consultar logs de acceso | Admin |
+| `USERS` | Consultar lista de ususarios | Admin |
 | `ADD-USER` | Agregar usuario | Admin |
 | `DELETE-USER` | Eliminar usuario | Admin |
 | `SET-ROLE` | Cambiar rol de usuario | Admin |

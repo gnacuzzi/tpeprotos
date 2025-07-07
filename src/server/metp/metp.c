@@ -328,20 +328,23 @@ static unsigned on_request_read(struct selector_key *key) {
                 state = METP_REQUEST_REPLY;
             }
             else if (strcmp(cmd, "GET_LOGS") == 0) {
-                const char *logs_data = get_logs();
-                sess->send_ptr = logs_data;
-                sess->send_remaining = strlen(logs_data);
-                sess->sending_data = true;
+                if (!can_user_execute_command(sess->authenticated_user, "GET_LOGS")) {
+                    respuesta_error("403 Forbidden\n", key);
+                } else {
+                    const char *logs_data = get_logs();
+                    sess->send_ptr = logs_data;
+                    sess->send_remaining = strlen(logs_data);
+                    sess->sending_data = true;
 
-                const char *hdr = "200 OK\n";
-                size_t hlen = strlen(hdr);
-                size_t wcap;
-                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                if (wcap >= hlen) {
-                    memcpy(out, hdr, hlen);
-                    buffer_write_adv(&sess->write_buffer, hlen);
+                    const char *hdr = "200 OK\n";
+                    size_t hlen = strlen(hdr);
+                    size_t wcap;
+                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
+                    if (wcap >= hlen) {
+                        memcpy(out, hdr, hlen);
+                        buffer_write_adv(&sess->write_buffer, hlen);
+                    }
                 }
-
                 state = METP_REQUEST_REPLY;
             }
 

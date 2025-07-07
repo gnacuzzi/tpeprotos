@@ -133,11 +133,11 @@ int log_access(const char *username, const char *source_ip, const char *destinat
     strncpy(logs[log_index].destination, destination, 255);
     logs[log_index].bytes = bytes;
 
-    int this_index = log_index;
+    int index = log_index;
     log_index = (log_index + 1) % 1000;
     if (log_count < 1000) log_count++;
 
-    return this_index;
+    return index;
 }
 
 

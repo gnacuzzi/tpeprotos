@@ -544,11 +544,8 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key){
     freeaddrinfo(res);
     s->remote_fd = rfd;
     printf("[DBG] Remote connection initialized, fd: %d\n", rfd);
-    //TODO: revisar si esta bien esto es para el log de metp
     snprintf(s->dest_str, sizeof s->dest_str, "%s:%u", name, req->dst.port);
-    //TODO: revisar si esta bien que este aca, me parecia mejor aca que cuando cerrara la conexion
-    //si no estoy equivocada para este punto ya se tienen todos los datos
-    log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, s->bytes_transferred);
+    s->log_id = log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, s->bytes_transferred);
     selector_register(key->s, rfd, &socks5_handler, OP_WRITE, s);
     return 0;
 }

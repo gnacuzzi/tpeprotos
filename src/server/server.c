@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <errno.h>
 
 
 #define BUF_SIZE 4096
@@ -132,9 +133,24 @@ static const struct fd_handler metp_handler = {
 
 static void accept_metp(struct selector_key *key) {
     int client_fd = accept(key->fd, NULL, NULL);
-    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+    if (client_fd == -1) {
+        perror("Failed to accept METP connection");
+        return;
+    }
+    
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) == -1) {
+        perror("Failed to set METP socket non-blocking");
+        close(client_fd);
+        return;
+    }
 
     metp_session *m = calloc(1, sizeof(*m));
+    if (m == NULL) {
+        perror("Failed to allocate METP session");
+        close(client_fd);
+        return;
+    }
+    
     m->sockfd           = client_fd;
     m->is_connected     = true;
     m->is_authenticated = false;
@@ -145,8 +161,8 @@ static void accept_metp(struct selector_key *key) {
     m->raw_write_buffer = malloc(size);
     m->buffer_size = size;
 
-    //aca creo q deberia ir un mensaje de error
     if (!m->raw_read_buffer || !m->raw_write_buffer) {
+        perror("Failed to allocate METP buffers");
         close(client_fd);
         free(m->raw_read_buffer);
         free(m->raw_write_buffer);
@@ -157,13 +173,19 @@ static void accept_metp(struct selector_key *key) {
     buffer_init(&m->read_buffer, size, m->raw_read_buffer);
     buffer_init(&m->write_buffer, size, m->raw_write_buffer);
 
-
     m->stm.states    = get_metp_states();
     m->stm.initial   = METP_HELLO;
     m->stm.max_state = METP_DONE;
     stm_init(&m->stm);
 
-    selector_register(key->s, client_fd, &metp_handler, OP_READ, m);
+    if (selector_register(key->s, client_fd, &metp_handler, OP_READ, m) != SELECTOR_SUCCESS) {
+        perror("Failed to register METP session with selector");
+        close(client_fd);
+        free(m->raw_read_buffer);
+        free(m->raw_write_buffer);
+        free(m);
+        return;
+    }
 
     if (m->stm.states[METP_HELLO].on_arrival) {
         struct selector_key sk = *key;
@@ -186,10 +208,25 @@ const struct fd_handler socks5_handler = {
 
 static void accept_socks5(struct selector_key *key) {
     int client_fd = accept(key->fd, NULL, NULL);
-    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+    if (client_fd == -1) {
+        perror("Failed to accept SOCKS5 connection");
+        return;
+    }
+    
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) == -1) {
+        perror("Failed to set SOCKS5 socket non-blocking");
+        close(client_fd);
+        return;
+    }
 
     // Inicializo sólo la sesión SOCKS5
     socks5_session *s = calloc(1, sizeof(*s));
+    if (s == NULL) {
+        perror("Failed to allocate SOCKS5 session");
+        close(client_fd);
+        return;
+    }
+    
     s->client_fd = client_fd;  s->remote_fd = -1;  s->is_closing = false;
     buffer_init(&s->c2p_read,  BUF_SIZE, s->raw_c2p_r);
     buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
@@ -202,6 +239,7 @@ static void accept_socks5(struct selector_key *key) {
 
     increment_current_connections();
     increment_historic_connections();
+    
     //TODO: dios mio revisa suena a que esta muy mal esto y que el accept no deberia tener
     //de parametros NULL, NULL
     struct sockaddr_storage ss; socklen_t sl = sizeof ss;
@@ -216,7 +254,12 @@ static void accept_socks5(struct selector_key *key) {
     }
     s->bytes_transferred = 0;
 
-    selector_register(key->s, client_fd, &socks5_handler, OP_READ, s);
+    if (selector_register(key->s, client_fd, &socks5_handler, OP_READ, s) != SELECTOR_SUCCESS) {
+        perror("Failed to register SOCKS5 session with selector");
+        close(client_fd);
+        free(s);
+        return;
+    }
 }
 
 static const struct fd_handler accept_socks5_handler = {
@@ -230,12 +273,40 @@ int create_listener(const char *port) {
         .ai_flags = AI_PASSIVE,
     }, *res;
 
-    if (getaddrinfo(NULL, port, &hints, &res) != 0) return -1;
+    if (getaddrinfo(NULL, port, &hints, &res) != 0) {
+        perror("getaddrinfo failed");
+        return -1;
+    }
 
     int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
-    bind(fd, res->ai_addr, res->ai_addrlen);
-    listen(fd, SOMAXCONN);
+    if (fd == -1) {
+        perror("Failed to create socket");
+        freeaddrinfo(res);
+        return -1;
+    }
+    
+    int opt = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        perror("Failed to set SO_REUSEADDR");
+        close(fd);
+        freeaddrinfo(res);
+        return -1;
+    }
+    
+    if (bind(fd, res->ai_addr, res->ai_addrlen) == -1) {
+        perror("Failed to bind socket");
+        close(fd);
+        freeaddrinfo(res);
+        return -1;
+    }
+    
+    if (listen(fd, SOMAXCONN) == -1) {
+        perror("Failed to listen on socket");
+        close(fd);
+        freeaddrinfo(res);
+        return -1;
+    }
+    
     freeaddrinfo(res);
     return fd;
 }
@@ -251,16 +322,57 @@ int main(int argc, char ** argv) {
 
     selector_init(&(struct selector_init){.signal = SIGALRM});
     fd_selector sel = selector_new(1024); //magic number
+    if (sel == NULL) {
+        perror("Failed to create selector");
+        return 1;
+    }
 
     // 1) Listener SOCKS5
     int s5_fd = create_listener(S5_PORT);
-    fcntl(s5_fd, F_SETFL, O_NONBLOCK);
-    selector_register(sel, s5_fd, &accept_socks5_handler, OP_READ, NULL);
+    if (s5_fd == -1) {
+        fprintf(stderr, "Failed to create SOCKS5 listener on port %s\n", S5_PORT);
+        selector_destroy(sel);
+        return 1;
+    }
+    
+    if (fcntl(s5_fd, F_SETFL, O_NONBLOCK) == -1) {
+        perror("Failed to set SOCKS5 listener non-blocking");
+        close(s5_fd);
+        selector_destroy(sel);
+        return 1;
+    }
+    
+    if (selector_register(sel, s5_fd, &accept_socks5_handler, OP_READ, NULL) != SELECTOR_SUCCESS) {
+        perror("Failed to register SOCKS5 listener");
+        close(s5_fd);
+        selector_destroy(sel);
+        return 1;
+    }
 
     // 2) Listener METP
     int m_fd = create_listener(METP_PORT);
-    fcntl(m_fd, F_SETFL, O_NONBLOCK);
-    selector_register(sel, m_fd, &accept_metp_handler, OP_READ, NULL);
+    if (m_fd == -1) {
+        fprintf(stderr, "Failed to create METP listener on port %s\n", METP_PORT);
+        close(s5_fd);
+        selector_destroy(sel);
+        return 1;
+    }
+    
+    if (fcntl(m_fd, F_SETFL, O_NONBLOCK) == -1) {
+        perror("Failed to set METP listener non-blocking");
+        close(s5_fd);
+        close(m_fd);
+        selector_destroy(sel);
+        return 1;
+    }
+    
+    if (selector_register(sel, m_fd, &accept_metp_handler, OP_READ, NULL) != SELECTOR_SUCCESS) {
+        perror("Failed to register METP listener");
+        close(s5_fd);
+        close(m_fd);
+        selector_destroy(sel);
+        return 1;
+    }
 
     while (1) {
         selector_select(sel);

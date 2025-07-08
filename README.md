@@ -15,6 +15,51 @@ TPE Protos es un servidor proxy SOCKS5 de alto rendimiento con un protocolo de g
 - **Métricas**: Estadísticas en tiempo real de conexiones y transferencia
 - **Logging**: Registro de acceso con timestamps
 
+## Compilación y Estructura del Proyecto
+
+### Requisitos
+
+- `gcc` 
+- `make`
+
+### Compilar el proyecto
+
+Desde la raíz del repositorio, ejecutar:
+
+```bash
+make all
+```
+
+Esto generará los ejecutables en la carpeta `bin/`:
+
+- `bin/socks5` — Servidor SOCKS5
+- `bin/client` — Cliente METP
+
+Para limpiar los archivos generados (objetos y ejecutables):
+
+```bash
+make clean
+```
+
+### Nota sobre la plataforma
+
+El Makefile soporta dos variables de entorno para adaptar los flags de compilación:
+
+- `WSL=1`  
+  Cuando lo invocas así (`make all WSL=1`), se añade `-D_POSIX_C_SOURCE=200112L` para asegurar compatibilidad en Windows Subsystem for Linux.
+
+- `MAC=1`  
+  Si lo pones a 1 (`make all MAC=1`), se define `-DMSG_NOSIGNAL=0` para desactivar `MSG_NOSIGNAL` en macOS.
+
+
+
+### Ubicación de los materiales
+
+- **Códigos fuente:** `src/`
+- **Archivos de construcción:** `Makefile`, `Makefile.inc` (en la raíz)
+- **Ejecutables generados:** `bin/`
+- **Tests:** `tests/`
+
 ## Uso
 
 ### 1. Configurar el Superusuario

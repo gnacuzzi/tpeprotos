@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
         .name = args.auth_user,
         .pass = args.auth_pass
     };
-    fprintf(stderr, "Conectando a %s:%u con usuario '%s'\n",
+    fprintf(stderr, "Conecting a %s:%u with user '%s'\n",
             args.metp_addr, args.metp_port, auth.name);
     fflush(stderr);
     pc_connect_status cst = proxy_connect(
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         break;
 
     default:
-        fprintf(stderr, "Modo inválido\n");
+        fprintf(stderr, "Invalid mode\n");
         break;
     }
 

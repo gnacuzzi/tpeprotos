@@ -384,6 +384,8 @@ static unsigned on_request_read(struct selector_key *key) {
                 char *size_str = strtok_r(NULL, " \r\n", &saveptr);
                 if (!size_str) {
                     respuesta_error("400 Bad Request\n", key);
+                } else if (!can_user_execute_command(sess->authenticated_user, "CHANGE-BUFFER")) {
+                    respuesta_error("403 Forbidden\n", key);
                 } else {
                     long new_size = strtol(size_str, NULL, 10);
                     if (new_size <= 0) {

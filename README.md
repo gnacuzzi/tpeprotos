@@ -41,9 +41,6 @@ export PROXY_CTRL_SUPERUSER=admin:password123
 # Agregar usuarios desde línea de comandos
 ./bin/socks5d -u admin:password123 -u user1:pass123 -u user2:pass456
 
-# Deshabilitar disectores (opción -N)
-./bin/socks5d -N
-
 # Ejemplo completo con todas las opciones
 ./bin/socks5d -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080 -u admin:password123 -u user1:pass123
 ```
@@ -59,7 +56,6 @@ export PROXY_CTRL_SUPERUSER=admin:password123
 | `-p <port>` | Puerto entrante conexiones SOCKS | 1080 |
 | `-P <port>` | Puerto entrante conexiones configuración | 8080 |
 | `-u <name>:<pass>` | Usuario y contraseña (hasta 10) | - |
-| `-N` | Deshabilitar disectores | Habilitados |
 
 ### 3. Usar el Cliente METP
 

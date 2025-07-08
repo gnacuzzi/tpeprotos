@@ -27,22 +27,22 @@ export PROXY_CTRL_SUPERUSER=admin:password123
 
 ```bash
 # Ejecutar con configuración por defecto
-./bin/socks5d
+./bin/socks5
 
 # Mostrar ayuda
-./bin/socks5d -h
+./bin/socks5 -h
 
 # Mostrar versión
-./bin/socks5d -v
+./bin/socks5 -v
 
 # Configurar direcciones y puertos personalizados
-./bin/socks5d -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080
+./bin/socks5 -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080
 
 # Agregar usuarios desde línea de comandos
-./bin/socks5d -u admin:password123 -u user1:pass123 -u user2:pass456
+./bin/socks5 -u admin:password123 -u user1:pass123 -u user2:pass456
 
 # Ejemplo completo con todas las opciones
-./bin/socks5d -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080 -u admin:password123 -u user1:pass123
+./bin/socks5 -l 0.0.0.0 -p 1080 -L 127.0.0.1 -P 8080 -u admin:password123 -u user1:pass123
 ```
 
 ### Opciones del Servidor

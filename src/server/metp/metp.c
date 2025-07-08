@@ -9,6 +9,7 @@ static unsigned on_request_read(struct selector_key *key);
 static unsigned on_request_write(struct selector_key *key);
 static void on_error_arrival(const unsigned state, struct selector_key *key);
 static unsigned on_error_write(struct selector_key *key);
+static void respuesta_error(const char *msg, struct selector_key *key);
 
 static size_t io_buffer_size = BUFFER_SIZE;
 
@@ -67,7 +68,8 @@ static unsigned on_hello_read(struct selector_key *key) {
     }
     fflush(stderr);
     if (n <= 0) {
-        fprintf(stderr, "[DEBUG] recv <= 0, estado -> METP_ERROR\n");
+        if (n < 0) perror("recv() en on_hello_read");
+        respuesta_error("500 Internal Server Error\n", key);
         fflush(stderr);
         return METP_ERROR;
     }
@@ -79,6 +81,12 @@ static unsigned on_hello_read(struct selector_key *key) {
 
         if (sess->parsers.auth.idx < BUFFER_SIZE - 1) {
             sess->parsers.auth.line[sess->parsers.auth.idx++] = (char)c;
+        }else {
+            state = METP_ERROR;
+            const char *resp = "400 Bad Request: Line too long\n";
+            respuesta_error(resp, key);
+            selector_set_interest_key(key, OP_WRITE);
+            return state;
         }
 
         if (c == '\n' || sess->parsers.auth.idx == BUFFER_SIZE - 1) {
@@ -87,7 +95,6 @@ static unsigned on_hello_read(struct selector_key *key) {
             if (strcmp(sess->parsers.auth.line, "HELLO " METP_VERSION "\n") == 0) {
                 fprintf(stderr, "[DEBUG] HELLO recibido correctamente\n");
                 const char *resp = "200 Welcome to " METP_VERSION "\n";
-                
                 size_t wcap;
                 uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
                 fprintf(stderr, "[DEBUG] preparando respuesta: '%s'\n", resp);
@@ -137,6 +144,7 @@ static unsigned on_hello_write(struct selector_key *key) {
     ssize_t w = send(sess->sockfd, out, count, 0);
     fprintf(stderr, "[DEBUG] send(%d) devolvió %zd bytes\n", sess->sockfd, w);
     if (w <= 0) {
+        if (w < 0) perror("send() en on_hello_write");
         return METP_ERROR;
     }
     buffer_read_adv(&sess->write_buffer, w);
@@ -147,13 +155,11 @@ static unsigned on_hello_write(struct selector_key *key) {
     }
     return METP_HELLO_REPLY;
 }
-
 static unsigned on_authentication_read(struct selector_key *key) {
     metp_session *sess = key->data;
     fprintf(stderr, "[DEBUG] entra en on_authentication_read (sock=%d)\n", sess->sockfd);
     fflush(stderr);
     size_t cap;
-    unsigned state = METP_ERROR; 
     
     uint8_t *in = buffer_write_ptr(&sess->read_buffer, &cap);
     ssize_t n = recv(sess->sockfd, in, cap, 0);
@@ -165,59 +171,58 @@ static unsigned on_authentication_read(struct selector_key *key) {
     uint8_t c;
     while (buffer_can_read(&sess->read_buffer)) {
         c = buffer_read(&sess->read_buffer);
-        if (sess->parsers.auth.idx < BUFFER_SIZE - 1) {
-            sess->parsers.auth.line[sess->parsers.auth.idx++] = (char)c;
-        }
 
-        if (c == '\n' || sess->parsers.auth.idx == BUFFER_SIZE - 1) {
+       
+        if (sess->parsers.auth.idx >= BUFFER_SIZE - 1) {
+            respuesta_error("400 Bad Request: Line too long\n", key);
+            selector_set_interest_key(key, OP_WRITE);
+            return METP_ERROR;
+        }
+        
+        sess->parsers.auth.line[sess->parsers.auth.idx++] = (char)c;
+
+        if (c == '\n') {
             sess->parsers.auth.line[sess->parsers.auth.idx] = '\0';
+            sess->parsers.auth.idx = 0; 
 
             char *saveptr = NULL;
             char *cmd = strtok_r(sess->parsers.auth.line, " \r\n", &saveptr);
-            if (cmd && strcmp(cmd, "AUTH") == 0) {
+            
+            if (cmd == NULL) { 
+                continue; 
+            }
+
+            if (strcmp(cmd, "AUTH") == 0) {
                 char *user = strtok_r(NULL, " \r\n", &saveptr);
                 char *pass = strtok_r(NULL, " \r\n", &saveptr);
-                bool ok = verify_user(user, pass);
 
-                const char *resp = ok
-                    ? "200 OK\n"
-                    : "401 Unauthorized. Closing conection.\n";
-                size_t wcap;
-                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                size_t len = strlen(resp);
-                if (len > wcap) len = wcap;
-                memcpy(out, resp, len);
-                buffer_write_adv(&sess->write_buffer, len);
+                if (user == NULL || pass == NULL) {
+                    respuesta_error("400 Bad Request: Missing user or password\n", key);
+                    selector_set_interest_key(key, OP_WRITE);
+                    return METP_ERROR;
+                }
 
-                if (ok) {
+                if (verify_user(user, pass)) {
                     sess->is_authenticated = true;
                     strncpy(sess->authenticated_user, user, MAX_USERNAME_LEN - 1);
                     sess->authenticated_user[MAX_USERNAME_LEN - 1] = '\0';
-                    state = METP_AUTH_REPLY;
+                    respuesta_error("200 OK\n", key); 
                 } else {
-                    state = METP_AUTH_REPLY;
+                    respuesta_error("401 Unauthorized. Closing conection.\n", key);
+                    sess->must_close = true; 
                 }
-                if(!ok) state = METP_ERROR;
+                
+                selector_set_interest_key(key, OP_WRITE);
+                return METP_AUTH_REPLY;
+
             } else {
-                const char *resp = "400 Bad Request\n";
-                size_t wcap;
-                uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                size_t len = strlen(resp);
-                if (len > wcap) len = wcap;
-                memcpy(out, resp, len);
-                buffer_write_adv(&sess->write_buffer, len);
-
-                state = METP_ERROR;//TODO: ver si dejamos que vuelva por lo menos 3 veces?
+                respuesta_error("400 Bad Request\n", key);
+                selector_set_interest_key(key, OP_WRITE);
+                return METP_ERROR;
             }
-
-            sess->parsers.auth.idx = 0;
-            break;
         }
     }
-    if (state == METP_AUTH_REPLY || state == METP_ERROR) {
-        selector_set_interest_key(key, OP_WRITE);
-    }
-    return state;
+    return METP_AUTH;
 }
 
 static unsigned on_authentication_write(struct selector_key *key) {
@@ -259,15 +264,19 @@ static void respuesta_ok(struct selector_key *key) {
     uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
     memcpy(out, r, strlen(r));
     buffer_write_adv(&sess->write_buffer, strlen(r));
+    selector_set_interest_key(key, OP_WRITE);
+    
 }
 static void respuesta_error(const char *msg, struct selector_key *key) {
     metp_session *sess = key->data;
+    if (sess == NULL) return; 
     size_t wcap; 
     uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
     size_t len = strlen(msg);
     if (len > wcap) len = wcap;
     memcpy(out, msg, len);
     buffer_write_adv(&sess->write_buffer, len);
+    selector_set_interest_key(key, OP_WRITE);
 }
 
 
@@ -281,7 +290,19 @@ static unsigned on_request_read(struct selector_key *key) {
 
     uint8_t *in = buffer_write_ptr(&sess->read_buffer, &cap);
     ssize_t n = recv(sess->sockfd, in, cap, 0);
-    if (n <= 0) return METP_ERROR;
+    if (n < 0) {
+        perror("recv() en on_request_read");
+        respuesta_error("500 Internal Server Error\n", key);
+        selector_set_interest_key(key, OP_WRITE);
+        return METP_ERROR;
+    }
+    if (n == 0) {
+        selector_unregister_fd(key->s, sess->sockfd);
+        close(sess->sockfd);
+        free(sess);
+        key->data = NULL;
+        return METP_DONE;
+    }
     buffer_write_adv(&sess->read_buffer, n);
 
     uint8_t c;
@@ -289,6 +310,10 @@ static unsigned on_request_read(struct selector_key *key) {
         c = buffer_read(&sess->read_buffer);
         if (sess->parsers.request.idx < BUFFER_SIZE - 1) {
             sess->parsers.request.line[sess->parsers.request.idx++] = (char)c;
+        }else {
+            respuesta_error("400 Bad Request: Line too long\n", key);
+            selector_set_interest_key(key, OP_WRITE);
+            return METP_REQUEST_REPLY;
         }
         if (c == '\n' || sess->parsers.request.idx == BUFFER_SIZE - 1) {
             sess->parsers.request.line[sess->parsers.request.idx] = '\0';
@@ -303,13 +328,20 @@ static unsigned on_request_read(struct selector_key *key) {
                 } else {
                     static char tmp[128];
                     int len = snprintf(tmp, sizeof(tmp),
-                    "HISTORICAL_CONNECTIONS: %u\n"
-                        "CURRENT_CONNECTIONS:    %u\n"
-                        "BYTES_TRANSFERRED:      %" PRIu64 "\n",
-                        get_historic_connections(),
-                        get_socks_current_connections(),
-                        get_bytes_transferred()
-                    );
+                      "200 OK\n"
+                      "HISTORICAL_CONNECTIONS: %u\n"
+                      "CURRENT_CONNECTIONS:    %u\n"
+                      "BYTES_TRANSFERRED:      %" PRIu64 "\n"
+                      ".\n",
+                      get_historic_connections(),
+                      get_socks_current_connections(),
+                      get_bytes_transferred()
+                    ); 
+                    if (len > 0 && len < sizeof(tmp)) {
+                        respuesta_error(tmp, key); 
+                    } else {
+                        respuesta_error("500 Internal Server Error\n", key);
+                    }
 
                     sess->send_ptr = tmp;
                     sess->send_remaining = len;
@@ -478,8 +510,6 @@ static unsigned on_request_read(struct selector_key *key) {
 
     return state;
 }
-
-
 static unsigned on_request_write(struct selector_key *key) {
     metp_session *sess = key->data;
     fprintf(stderr, "[DEBUG] entra en on_request_write (sock=%d)\n", sess->sockfd);
@@ -495,7 +525,10 @@ static unsigned on_request_write(struct selector_key *key) {
         fprintf(stderr, "[DEBUG] on_request_write por QUIT: intentando enviar %zu bytes\n", count);
         ssize_t w = send(sess->sockfd, out, count, 0);
         fprintf(stderr, "[DEBUG] enviados %zd bytes\n", w);
-        if (w <= 0) return METP_ERROR;
+        if (w <= 0) {
+            if (w < 0) perror("send() en on_request_write");
+            return METP_ERROR;
+        }
         buffer_read_adv(&sess->write_buffer, w);
     }
 
@@ -554,6 +587,10 @@ static unsigned on_request_write(struct selector_key *key) {
 static void on_error_arrival(const unsigned state, struct selector_key *key) {
     fprintf(stderr, "[DEBUG] entra en on_error_arrival\n");
     fflush(stderr);
+    metp_session *sess = key->data;
+    if (!buffer_can_read(&sess->write_buffer)) {
+        respuesta_error("500 Internal Server Error\n", key);
+    }
     selector_set_interest_key(key, OP_WRITE);
 }
 

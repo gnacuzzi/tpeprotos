@@ -111,7 +111,12 @@ static unsigned on_greet_read(struct selector_key *key) {
     size_t space;
     uint8_t *dst = buffer_write_ptr(buf, &space);
     ssize_t r = recv(key->fd, dst, space, 0);
-    if (r <= 0) {
+    if (r < 0) { 
+        perror("recv() in on_greet_read failed");
+        return SOCKS5_ERROR;
+    }
+    if (r == 0) { 
+        fprintf(stderr, "Client (fd=%d) closed connection during greeting.\n", key->fd);
         return SOCKS5_CLOSING;
     }
     buffer_write_adv(buf, r);
@@ -195,7 +200,12 @@ static unsigned on_authentication_read(struct selector_key *key) {
     size_t space;
     uint8_t *dst = buffer_write_ptr(buf, &space);
     ssize_t r = recv(key->fd, dst, space, 0);
-    if (r <= 0) {
+    if (r < 0) { 
+        perror("recv() in on_authentication_read failed");
+        return SOCKS5_ERROR;
+    }
+    if (r == 0) { 
+        fprintf(stderr, "Client (fd=%d) closed connection during authentication.\n", key->fd);
         return SOCKS5_CLOSING;
     }
     buffer_write_adv(buf, r);
@@ -215,6 +225,12 @@ static unsigned on_authentication_read(struct selector_key *key) {
         uint8_t status = (s->user != NULL)
                          ? AUTHENTICATION_STATUS_SUCCESS
                          : AUTHENTICATION_STATUS_FAILED;
+
+          if (status == AUTHENTICATION_STATUS_FAILED) {
+            fprintf(stderr, "Authentication failed for user '%s' on fd %d\n", s->parsers.authentication.req.cred.usernme, key->fd);
+        } else {
+            fprintf(stderr, "User '%s' authenticated successfully on fd %d\n", s->user->username, key->fd);
+        }
 
         generate_authentication_response(&s->p2c_write, status);
 
@@ -258,6 +274,27 @@ static int generate_authentication_response(buffer *buf, uint8_t status) {
 static void on_request(const unsigned state, struct selector_key *key) {
     fprintf(stderr,"[DBG] Arriving at SOCKS5_REQUEST state\n");
     selector_set_interest_key(key, OP_READ);
+}
+static int fill_bound_address(int fd, socks5_address *addr) {
+    struct sockaddr_storage ss;
+    socklen_t sl = sizeof(ss);
+    if (getsockname(fd, (struct sockaddr *)&ss, &sl) < 0) {
+        return -1;
+    }
+    if (ss.ss_family == AF_INET) {
+        struct sockaddr_in *in4 = (void *)&ss;
+        addr->atyp = SOCKS5_ATYP_IPV4;
+        memcpy(addr->addr.ipv4, &in4->sin_addr, 4);
+        addr->port = ntohs(in4->sin_port);
+    } else if (ss.ss_family == AF_INET6) {
+        struct sockaddr_in6 *in6 = (void *)&ss;
+        addr->atyp = SOCKS5_ATYP_IPV6;
+        memcpy(addr->addr.ipv6, &in6->sin6_addr, 16);
+        addr->port = ntohs(in6->sin6_port);
+    } else {
+        return -1;
+    }
+    return 0;
 }
 
 static unsigned on_request_read(struct selector_key *key) {
@@ -319,36 +356,8 @@ static unsigned on_request_read(struct selector_key *key) {
                 return SOCKS5_ERROR;
         }
     }
-
-    if (avail < 4) {
-        fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST state, not enough data\n");
-        fflush(stderr);
-        return SOCKS5_REQUEST;
-    }
-    return SOCKS5_ERROR;
-}
-
-static int fill_bound_address(int fd, socks5_address *addr) {
-    struct sockaddr_storage ss;
-    socklen_t sl = sizeof(ss);
-    if (getsockname(fd, (struct sockaddr *)&ss, &sl) < 0) {
-        return -1;
-    }
-    if (ss.ss_family == AF_INET) {
-        struct sockaddr_in *in4 = (void *)&ss;
-        addr->atyp = SOCKS5_ATYP_IPV4;
-        memcpy(addr->addr.ipv4, &in4->sin_addr, 4);
-        addr->port = ntohs(in4->sin_port);
-    } else if (ss.ss_family == AF_INET6) {
-        struct sockaddr_in6 *in6 = (void *)&ss;
-        addr->atyp = SOCKS5_ATYP_IPV6;
-        memcpy(addr->addr.ipv6, &in6->sin6_addr, 16);
-        addr->port = ntohs(in6->sin6_port);
-    } else {
-        return -1;
-    }
-    return 0;
-}
+    return SOCKS5_REQUEST; //TODO: no se si esto esta bien pero sino me tiraba un warning
+} 
 
 static unsigned on_request_connect_write(struct selector_key *key) {
     fprintf(stderr,"[DBG] Writing SOCKS5_REQUEST_CONNECT state\n");
@@ -484,71 +493,81 @@ static unsigned on_request_forward_write(struct selector_key *key) {
 
     return s->stm.current->state;
 }
-
-static int init_remote_connection(socks5_session *s, struct selector_key *key){
+static int init_remote_connection(socks5_session *s, struct selector_key *key) {
     socks5_request *req = &s->parsers.request.request;
     char hoststr[INET6_ADDRSTRLEN];
     const char *name;
-    struct addrinfo hints = {
-        .ai_family   = AF_UNSPEC,
-        .ai_socktype = SOCK_STREAM
-    }, *res;
+    struct addrinfo hints = {.ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM}, *res, *p;
 
     switch (req->dst.atyp) {
       case SOCKS5_ATYP_IPV4:
-        inet_ntop(AF_INET, req->dst.addr.ipv4, hoststr, sizeof(hoststr));
-        name = hoststr;
-        fprintf(stderr, "[DBG] init_remote_connection resolving '%s'\n", name);
-        break;
+          inet_ntop(AF_INET, req->dst.addr.ipv4, hoststr, sizeof(hoststr));
+          name = hoststr;
+          break;
       case SOCKS5_ATYP_IPV6:
-        inet_ntop(AF_INET6, req->dst.addr.ipv6, hoststr, sizeof(hoststr));
-        name = hoststr;
-        fprintf(stderr, "[DBG] init_remote_connection resolving '%s'\n", name);
-        break;
+          inet_ntop(AF_INET6, req->dst.addr.ipv6, hoststr, sizeof(hoststr));
+          name = hoststr;
+          break;
       case SOCKS5_ATYP_DOMAIN:
-        memcpy(hoststr, req->dst.addr.domain.name, req->dst.addr.domain.len);
-        hoststr[req->dst.addr.domain.len] = '\0';
-        name = hoststr;
-        fprintf(stderr, "[DBG] init_remote_connection resolving '%s'\n", name);
-        break;
+          memcpy(hoststr, req->dst.addr.domain.name, req->dst.addr.domain.len);
+          hoststr[req->dst.addr.domain.len] = '\0';
+          name = hoststr;
+          break;
       default:
-        return -1;
+          return -1;
     }
-    
+
     char portstr[6];
     snprintf(portstr, sizeof(portstr), "%u", req->dst.port);
-    int gai = getaddrinfo(name, portstr, &hints, &res);
-    fprintf(stderr,"[DBG] Resolving %s:%d returned %d\n", name, req->dst.port, gai);
 
+    int gai = getaddrinfo(name, portstr, &hints, &res);
     if (gai != 0) {
         return -1;
     }
-    
 
-    int rfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    fprintf(stderr,"[DBG] Created socket %d\n", rfd);
+    int rfd = -1;
+    bool connected = false;
 
-    if (rfd < 0) {
-        freeaddrinfo(res);
+    for (p = res; p != NULL; p = p->ai_next) {
+        rfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (rfd < 0) {
+            continue;
+        }
+
+        if (selector_fd_set_nio(rfd) == -1) {
+            close(rfd);
+            continue;
+        }
+
+        int c = connect(rfd, p->ai_addr, p->ai_addrlen);
+        if (c == 0) {
+            connected = true;
+            break;
+        }
+
+        if (c < 0 && errno == EINPROGRESS) {
+            connected = true;
+            break;
+        }
+
+        close(rfd);
+        rfd = -1;
+    }
+
+    freeaddrinfo(res);
+
+    if (!connected) {
         return -1;
     }
-    fcntl(rfd, F_SETFL, O_NONBLOCK);
-    int c = connect(rfd, res->ai_addr, res->ai_addrlen);
-    fprintf(stderr,"[DBG] Connecting to remote %s:%d returned %d\n", name, req->dst.port, c);
-    if (c < 0 && errno != EINPROGRESS) {
-      perror("[ERR] connect()");
-      close(rfd);
-      freeaddrinfo(res);
-      return -1;
-    }
-    freeaddrinfo(res);
+
     s->remote_fd = rfd;
-    printf("[DBG] Remote connection initialized, fd: %d\n", rfd);
-    snprintf(s->dest_str, sizeof s->dest_str, "%s:%u", name, req->dst.port);
-    s->log_id = log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, s->bytes_transferred);
-    selector_register(key->s, rfd, &socks5_handler, OP_WRITE, s);
+
+    snprintf(s->dest_str, sizeof(s->dest_str), "%s:%s", name, portstr);
+    s->log_id = log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, 0);
+
     return 0;
 }
+
 
 // CLOSING
 static unsigned on_closing_read(struct selector_key *key) {
@@ -557,4 +576,5 @@ static unsigned on_closing_read(struct selector_key *key) {
 static unsigned on_closing_write(struct selector_key *key) {
     return SOCKS5_CLOSING;
 }
+
 

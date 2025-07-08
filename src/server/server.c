@@ -14,23 +14,31 @@
 #define BUF_SIZE 4096
 
 //TODO: global del archivo, programacion defensiva, mejorar manejo de errores
-
 //TODO: mejorar close
 static void socks5_close(struct selector_key *key) {
+    if (key == NULL || key->data == NULL) {
+        return;
+    }
     socks5_session *s = key->data;
     if (s->is_closing) {
-        return;  
+        return;
     }
     s->is_closing = true;
+    fprintf(stderr, "Closing SOCKS5 session for fd %d\n", s->client_fd);
+
     stm_handler_close(&s->stm, key);
-    selector_unregister_fd(key->s, s->client_fd);
-    if(s->client_fd >= 0) {
-        decrement_current_connections();
-    }
-    close(s->client_fd);
+
     if (s->remote_fd >= 0) {
         selector_unregister_fd(key->s, s->remote_fd);
         close(s->remote_fd);
+        s->remote_fd = -1;
+    }
+
+    if (s->client_fd >= 0) {
+        selector_unregister_fd(key->s, s->client_fd);
+        close(s->client_fd);
+        decrement_current_connections();
+        s->client_fd = -1;
     }
 
     socks5_request_free(&s->parsers.request.request);
@@ -120,6 +128,7 @@ static void metp_close(struct selector_key *key) {
         s->raw_write_buffer = NULL;
     }
 
+    fprintf(stderr, "Closing METP session for fd %d\n", key->fd);
 }
 
 static const struct fd_handler metp_handler = {
@@ -131,12 +140,11 @@ static const struct fd_handler metp_handler = {
 
 static void accept_metp(struct selector_key *key) {
     int client_fd = accept(key->fd, NULL, NULL);
-    if (client_fd == -1) {
+    if (client_fd < 0) {
         perror("Failed to accept METP connection");
         return;
     }
-    
-    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) == -1) {
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) < 0) {
         perror("Failed to set METP socket non-blocking");
         close(client_fd);
         return;
@@ -253,10 +261,10 @@ static void accept_socks5(struct selector_key *key) {
     s->bytes_transferred = 0;
 
     if (selector_register(key->s, client_fd, &socks5_handler, OP_READ, s) != SELECTOR_SUCCESS) {
-        perror("Failed to register SOCKS5 session with selector");
-        close(client_fd);
+        fprintf(stderr, "Failed to register SOCKS5 client fd\n");
         free(s);
-        return;
+        close(client_fd);
+        decrement_current_connections(); 
     }
 }
 
@@ -308,7 +316,6 @@ int create_listener(const char *addr, const char *port) {
     freeaddrinfo(res);
     return fd;
 }
-
 int main(int argc, char ** argv) {
     signal(SIGPIPE, SIG_IGN); 
 
@@ -387,6 +394,7 @@ int main(int argc, char ** argv) {
     while (1) {
         selector_select(sel);
     }
+    
 
     selector_destroy(sel);
     close(s5_fd);
@@ -394,3 +402,4 @@ int main(int argc, char ** argv) {
     free_users(); //TODO: en realidad no liberamos nada, chequear
     return 0;
 }
+

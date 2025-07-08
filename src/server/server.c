@@ -246,8 +246,7 @@ static void accept_socks5(struct selector_key *key) {
     increment_current_connections();
     increment_historic_connections();
     
-    //TODO: dios mio revisa suena a que esta muy mal esto y que el accept no deberia tener
-    //de parametros NULL, NULL
+    //TODO: revisar lo de abajo y parametros del accept null null
     struct sockaddr_storage ss; socklen_t sl = sizeof ss;
     if (getpeername(client_fd, (struct sockaddr*)&ss, &sl) == 0) {
         if (ss.ss_family == AF_INET) {

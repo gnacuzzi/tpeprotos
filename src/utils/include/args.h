@@ -4,13 +4,6 @@
 #include <stdbool.h>
 #include "../../server/metp/users.h"
 
-
-struct users
-{
-    char* name;
-    char* pass;
-};
-
 struct socks5args
 {
     char* socks_addr;
@@ -21,7 +14,9 @@ struct socks5args
 
     bool disectors_enabled;
 
-    struct users users[MAX_USERS];
+    int nusers;
+
+    struct user users[MAX_USERS];
 };
 
 /**

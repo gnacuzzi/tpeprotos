@@ -17,8 +17,8 @@ typedef enum {
 } user_role;
 
 struct user {
-    char username[MAX_USERNAME_LEN];
-    char password[MAX_PASSWORD_LEN];
+    char * username;
+    char * password;
     user_role role;
     bool is_active;
 };

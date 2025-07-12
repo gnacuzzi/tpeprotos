@@ -38,7 +38,6 @@ bool init_users(void) {
             *colon = ':'; 
         }
     }
-    
     return true;
 }
 
@@ -67,20 +66,29 @@ user_role get_user_role(const char *username) {
 }
 
 bool add_user(const char *username, const char *password, user_role role) {
-    if (!username || !password || user_count >= MAX_USERS) return false;
-    
+    if (!username || !password || user_count >= MAX_USERS) {
+        return false;
+    }
+
     for (int i = 0; i < user_count; i++) {
         if (strcmp(users[i].username, username) == 0) {
-            return false; 
+            return false;
         }
     }
-    
-    strncpy(users[user_count].username, username, MAX_USERNAME_LEN - 1);
-    strncpy(users[user_count].password, password, MAX_PASSWORD_LEN - 1);
-    users[user_count].role = role;
+
+    users[user_count].username = strdup(username);
+    users[user_count].password = strdup(password);
+    if (!users[user_count].username || !users[user_count].password) {
+        perror("strdup");
+        free(users[user_count].username);
+        free(users[user_count].password);
+        return false;
+    }
+
+    users[user_count].role      = role;
     users[user_count].is_active = true;
     user_count++;
-    
+
     return true;
 }
 
@@ -90,6 +98,9 @@ bool remove_user(const char *username) {
     for (int i = 0; i < user_count; i++) {
         if (users[i].is_active && strcmp(users[i].username, username) == 0) {
             users[i].is_active = false;
+            free(users[i].username);
+            free(users[i].password);
+            users[i].username = NULL;
             return true;
         }
     }
@@ -219,5 +230,12 @@ struct user * authenticate_user(credentials * credentials) {
 }
 
 void free_users() {
+    for (int i = 0; i < user_count; i++) {
+        free(users[i].username);
+        free(users[i].password);
+        users[i].username = NULL;
+        users[i].password = NULL;
+        users[i].is_active = false;
+    }
     user_count = 0;
 }

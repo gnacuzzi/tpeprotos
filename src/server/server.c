@@ -324,11 +324,9 @@ int main(int argc, char ** argv) {
     init_metrics();
     init_users();
 
-    for (int i = 0; i < MAX_USERS; i++) {
-        if (args.users[i].name == NULL) {
-            break;
-        }
-        add_user(args.users[i].name, args.users[i].pass, ROLE_USER);
+    for (int i = 0; i < args.nusers; i++) {
+        const struct user *u = &args.users[i];
+        add_user(u->username, u->password, u->role);
     }
 
     selector_init(&(struct selector_init){.signal = SIGALRM});

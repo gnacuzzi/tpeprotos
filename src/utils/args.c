@@ -25,7 +25,7 @@ port(const char* s)
 }
 
 static void
-user(char* s, struct users* user)
+user(char* s, struct user* user)
 {
     char* p = strchr(s, ':');
     if (p == NULL)
@@ -37,8 +37,8 @@ user(char* s, struct users* user)
     {
         *p = 0;
         p++;
-        user->name = s;
-        user->pass = p;
+        user->username = s;
+        user->password = p;
     }
 }
 
@@ -63,7 +63,6 @@ usage(const char* progname)
             "   -P <conf port>   Puerto entrante conexiones configuracion\n"
             "   -u <name>:<pass> Usuario y contraseña de usuario que puede usar el proxy. Hasta 10.\n"
             "   -v               Imprime información sobre la versión versión y termina.\n"
-
             "\n",
             progname);
     exit(1);
@@ -83,7 +82,6 @@ parse_args(const int argc, char** argv, struct socks5args* args)
     args->disectors_enabled = true;
 
     int c;
-    int nusers = 0;
 
     while (true)
     {
@@ -117,16 +115,15 @@ parse_args(const int argc, char** argv, struct socks5args* args)
             args->mng_port = port(optarg);
             break;
         case 'u':
-            if (nusers >= MAX_USERS)
+            if (args->nusers >= MAX_USERS)
             {
-                fprintf(stderr, "maximun number of command line users reached: %d.\n", MAX_USERS);
                 exit(1);
             }
             else
             {
-                user(optarg, args->users + nusers);
-                nusers++;
-                add_user(args->users[nusers - 1].name, args->users[nusers - 1].pass, ROLE_USER);
+                user(optarg, args->users + args->nusers);
+                args->nusers++;
+                add_user(args->users[args->nusers - 1].username, args->users[args->nusers - 1].password, ROLE_USER);
             }
             break;
         case 'v':

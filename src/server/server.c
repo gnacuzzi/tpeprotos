@@ -58,6 +58,11 @@ static void socks5_read(struct selector_key *key) {
 
 static void metp_read(struct selector_key *key) {
     metp_session *s = key->data;
+
+    if (s == NULL || !s->stm_is_valid) {
+        return;
+    }
+
     unsigned next_state = stm_handler_read(&s->stm, key);
     s->stm.current = &s->stm.states[next_state];
 }
@@ -80,20 +85,14 @@ static void metp_write(struct selector_key *key) {
     unsigned next_state = stm_handler_write(&s->stm, key);
 
     if (next_state == METP_DONE) {
-
+        s->stm_is_valid = false;
         selector_unregister_fd(key->s, key->fd);
         close(key->fd);
-        if (s->raw_read_buffer != NULL) {
-            free(s->raw_read_buffer);
-            s->raw_read_buffer = NULL;
-        }
-        if (s->raw_write_buffer != NULL) {
-            free(s->raw_write_buffer);
-            s->raw_write_buffer = NULL;
-        }
+        free(s->raw_read_buffer);
+        free(s->raw_write_buffer);
         free(s);
         key->data = NULL;
-
+        fprintf(stderr, "Closing METP session for fd %d\n", key->fd);
         return;
     }
 
@@ -113,27 +112,10 @@ static void metp_block(struct selector_key *key) {
     s->stm.current = &s->stm.states[next_state];
 }
 
-static void metp_close(struct selector_key *key) {
-    metp_session *s = key->data;
-    stm_handler_close(&s->stm, key);
-
-    if (s->raw_read_buffer != NULL) {
-        free(s->raw_read_buffer);
-        s->raw_read_buffer = NULL;
-    }
-    if (s->raw_write_buffer != NULL) {
-        free(s->raw_write_buffer);
-        s->raw_write_buffer = NULL;
-    }
-
-    fprintf(stderr, "Closing METP session for fd %d\n", key->fd);
-}
-
 static const struct fd_handler metp_handler = {
     .handle_read  = metp_read,
     .handle_write = metp_write,
     .handle_block = metp_block, 
-    .handle_close = metp_close,
 };
 
 static void accept_metp(struct selector_key *key) {
@@ -154,7 +136,7 @@ static void accept_metp(struct selector_key *key) {
         close(client_fd);
         return;
     }
-    
+    m->stm_is_valid = true;
     m->sockfd           = client_fd;
     m->is_connected     = true;
     m->is_authenticated = false;

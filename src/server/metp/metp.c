@@ -272,11 +272,9 @@ static unsigned on_request_read(struct selector_key *key) {
         return METP_ERROR;
     }
     if (n == 0) {
-        selector_unregister_fd(key->s, sess->sockfd);
-        close(sess->sockfd);
-        free(sess);
-        key->data = NULL;
-        return METP_DONE;
+        sess->must_close = true;
+        selector_set_interest_key(key, OP_WRITE);
+        return METP_REQUEST_REPLY;
     }
     buffer_write_adv(&sess->read_buffer, n);
 
@@ -526,16 +524,11 @@ static unsigned on_request_write(struct selector_key *key) {
         return METP_REQUEST_REPLY;
     }
 
-
-
     if (sess->must_close && !buffer_can_read(&sess->write_buffer)) {
-
-        struct selector_key sk = *key;  // copiamos el key por si key->data desaparece
-        selector_unregister_fd(sk.s, sk.fd);
-        close(sk.fd);
-
         return METP_DONE;
     }
+
+
 
     if (!buffer_can_read(&sess->write_buffer)) {
         selector_set_interest_key(key, OP_READ);
@@ -560,7 +553,6 @@ static unsigned on_error_write(struct selector_key *key) {
     if (count > 0) send(sess->sockfd, out, count, 0);
     selector_unregister_fd(key->s, sess->sockfd);
     close(sess->sockfd);
-    //falta el free pero creo que aborta si lo agrego
     return METP_DONE;
 }
 

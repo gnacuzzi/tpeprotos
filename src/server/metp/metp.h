@@ -61,6 +61,9 @@ typedef struct {
     } parsers;
 
     struct state_machine stm;
+
+    bool stm_is_valid;
+
 } metp_session;
 
 const struct state_definition *get_metp_states(void);

@@ -222,9 +222,6 @@ static void accept_socks5(struct selector_key *key) {
     s->stm.initial   = SOCKS5_GREETING;
     s->stm.max_state = SOCKS5_CLOSING;
     stm_init(&s->stm);
-
-    increment_current_connections();
-    increment_historic_connections();
     
     //TODO: revisar lo de abajo y parametros del accept null null
     struct sockaddr_storage ss; socklen_t sl = sizeof ss;
@@ -243,8 +240,11 @@ static void accept_socks5(struct selector_key *key) {
         fprintf(stderr, "Failed to register SOCKS5 client fd\n");
         free(s);
         close(client_fd);
-        decrement_current_connections(); 
+        return;
     }
+
+    increment_current_connections();
+    increment_historic_connections();
 }
 
 static const struct fd_handler accept_socks5_handler = {

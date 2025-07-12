@@ -175,8 +175,11 @@ pc_response_status proxy_get_metrics(proxy_metrics *m) {
 
     while (recv_line(sockfd, line, sizeof(line)) > 0) {
         if (strcmp(line, ".\n") == 0) break;
-        if (strncmp(line, "HISTORICAL_CONNECTIONS:", 24) == 0)
-            m->historical_connections = strtoull(line + 24, NULL, 10);
+        const char *hist_pref = "HISTORICAL_CONNECTIONS:";
+        size_t  hist_len  = strlen(hist_pref);
+        if (strncmp(line, hist_pref, hist_len) == 0)
+            m->historical_connections = strtoull(line + hist_len, NULL, 10);
+        //todo: sacar los mn
         else if (strncmp(line, "CURRENT_CONNECTIONS:", 20) == 0)
             m->current_connections = strtoull(line + 20, NULL, 10);
         else if (strncmp(line, "BYTES_TRANSFERRED:", 18) == 0)

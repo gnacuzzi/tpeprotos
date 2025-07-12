@@ -300,32 +300,20 @@ static unsigned on_request_read(struct selector_key *key) {
                 } else {
                     static char tmp[128];
                     int len = snprintf(tmp, sizeof(tmp),
-                      "200 OK\n"
                       "HISTORICAL_CONNECTIONS: %u\n"
                       "CURRENT_CONNECTIONS:    %u\n"
-                      "BYTES_TRANSFERRED:      %" PRIu64 "\n"
-                      ".\n",
+                      "BYTES_TRANSFERRED:      %" PRIu64 "\n",
                       get_historic_connections(),
                       get_socks_current_connections(),
                       get_bytes_transferred()
                     ); 
                     if (len > 0 && len < sizeof(tmp)) {
-                        respuesta_error(tmp, key); 
+                        respuesta_ok(key);
+                        sess->send_ptr = tmp;
+                        sess->send_remaining = len;
+                        sess->sending_data = true;
                     } else {
                         respuesta_error("500 Internal Server Error\n", key);
-                    }
-
-                    sess->send_ptr = tmp;
-                    sess->send_remaining = len;
-                    sess->sending_data = true;
-
-                    const char *hdr = "200 OK\n";
-                    size_t hlen = strlen(hdr);
-                    size_t wcap;
-                    uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                    if (wcap >= hlen) {
-                        memcpy(out, hdr, hlen);
-                        buffer_write_adv(&sess->write_buffer, hlen);
                     }
             }
 

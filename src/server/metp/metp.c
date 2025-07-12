@@ -55,18 +55,11 @@ const struct state_definition *get_metp_states(void) {
 
 static unsigned on_hello_read(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_hello_read (sock=%d)\n", sess->sockfd);
-    fflush(stderr);
     size_t cap;
     unsigned state = METP_ERROR;  
 
     uint8_t *in = buffer_write_ptr(&sess->read_buffer, &cap);
     ssize_t n = recv(sess->sockfd, in, cap, 0);
-    fprintf(stderr, "[DEBUG] recv(%d) devolvió %zd bytes\n", sess->sockfd, n);
-    if (n > 0) {
-        fprintf(stderr, "[DEBUG] datos recibidos: '%.*s'\n", (int)n, in);
-    }
-    fflush(stderr);
     if (n <= 0) {
         if (n < 0) perror("recv() en on_hello_read");
         respuesta_error("500 Internal Server Error\n", key);
@@ -93,18 +86,13 @@ static unsigned on_hello_read(struct selector_key *key) {
             sess->parsers.auth.line[sess->parsers.auth.idx] = '\0';
 
             if (strcmp(sess->parsers.auth.line, "HELLO " METP_VERSION "\n") == 0) {
-                fprintf(stderr, "[DEBUG] HELLO recibido correctamente\n");
                 const char *resp = "200 Welcome to " METP_VERSION "\n";
                 size_t wcap;
                 uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
-                fprintf(stderr, "[DEBUG] preparando respuesta: '%s'\n", resp);
-                fflush(stderr);
                 size_t len = strlen(resp);
                 if (len > wcap) len = wcap;
                 memcpy(out, resp, len);
                 buffer_write_adv(&sess->write_buffer, len);
-                fprintf(stderr, "[DEBUG] respuesta escrita en el buffer de escritura\n");
-                fflush(stderr);
                 selector_set_interest_key(key, OP_WRITE);
                 state = METP_HELLO_REPLY;
             } else {
@@ -116,16 +104,12 @@ static unsigned on_hello_read(struct selector_key *key) {
                 if (len > wcap) len = wcap;
                 memcpy(out, resp, len);
                 buffer_write_adv(&sess->write_buffer, len);
-                fprintf(stderr, "[DEBUG] respuesta de error escrita en el buffer de escritura\n");
-                fflush(stderr);
             }
 
             sess->parsers.auth.idx = 0;
             break;
         }
     }
-    fprintf(stderr, "[DEBUG] sale de on_hello_read con nuevo estado %u\n", state);
-    fflush(stderr);
 
     return state;
 }
@@ -133,16 +117,13 @@ static unsigned on_hello_read(struct selector_key *key) {
 
 static unsigned on_hello_write(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_hello_write (sock=%d)\n", sess->sockfd);
-    fflush(stderr);
+
     size_t count;
     uint8_t *out = buffer_read_ptr(&sess->write_buffer, &count);
     if (count == 0) {
-        fprintf(stderr, "[DEBUG] buffer_write_ptr devolvió 0 bytes, estado -> METP_ERROR\n");
         return METP_ERROR;
     }
     ssize_t w = send(sess->sockfd, out, count, 0);
-    fprintf(stderr, "[DEBUG] send(%d) devolvió %zd bytes\n", sess->sockfd, w);
     if (w <= 0) {
         if (w < 0) perror("send() en on_hello_write");
         return METP_ERROR;
@@ -157,8 +138,6 @@ static unsigned on_hello_write(struct selector_key *key) {
 }
 static unsigned on_authentication_read(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_authentication_read (sock=%d)\n", sess->sockfd);
-    fflush(stderr);
     size_t cap;
     
     uint8_t *in = buffer_write_ptr(&sess->read_buffer, &cap);
@@ -227,8 +206,6 @@ static unsigned on_authentication_read(struct selector_key *key) {
 
 static unsigned on_authentication_write(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_authentication_write (sock=%d)\n", sess->sockfd);
-    fflush(stderr);
     size_t count;
 
     uint8_t *out = buffer_read_ptr(&sess->write_buffer, &count);
@@ -283,8 +260,6 @@ static void respuesta_error(const char *msg, struct selector_key *key) {
 //TODO: agregar manejo de error tipo 500, quizas seria en el handler error
 static unsigned on_request_read(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_request_read (sock=%d)\n", sess->sockfd);
-    fflush(stderr);
     size_t cap;
     unsigned state = METP_ERROR;
 
@@ -320,7 +295,6 @@ static unsigned on_request_read(struct selector_key *key) {
 
             char *saveptr = NULL;
             char *cmd = strtok_r(sess->parsers.request.line, " \r\n", &saveptr);
-            fprintf(stderr, "[DEBUG] comando recibido: '%s'\n", cmd ? cmd : "NULL");
 
             if (cmd && strcmp(cmd, "GET_METRICS") == 0) {
                 if (!can_user_execute_command(sess->authenticated_user, "GET_METRICS")) {
@@ -411,8 +385,6 @@ static unsigned on_request_read(struct selector_key *key) {
                 } else if (!can_user_execute_command(sess->authenticated_user, "ADD-USER")) {
                     respuesta_error("403 Forbidden\n", key);
                 } else {
-                    fprintf(stderr, "[DEBUG] intentando agregar usuario: %s\n", user);
-                    fflush(stderr);
                     add_user(user, pass, ROLE_USER);
                     respuesta_ok(key);
                 }
@@ -475,7 +447,6 @@ static unsigned on_request_read(struct selector_key *key) {
             }
 
             else if (cmd && strcmp(cmd, "QUIT") == 0) {
-                fprintf(stderr, "[DEBUG] comando QUIT detectado\n");
                 const char *hdr = "200 OK. Closing conection.\n";
                 size_t wcap; 
                 uint8_t *out = buffer_write_ptr(&sess->write_buffer, &wcap);
@@ -508,25 +479,15 @@ static unsigned on_request_read(struct selector_key *key) {
     }
 
     selector_set_interest_key(key, OP_WRITE);
-    fprintf(stderr, "[DEBUG] selector_set_interest_key(OP_WRITE) ejecutado para QUIT\n");
-
     return state;
 }
 static unsigned on_request_write(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_request_write (sock=%d)\n", sess->sockfd);
-    fprintf(stderr, "[DEBUG] must_close = %s, can_read = %s (sock=%d)\n",
-        sess->must_close ? "true" : "false",
-        buffer_can_read(&sess->write_buffer) ? "yes" : "no",
-        sess->sockfd);
-    fflush(stderr);
 
     size_t count;
     uint8_t *out = buffer_read_ptr(&sess->write_buffer, &count);
     if (count > 0) {
-        fprintf(stderr, "[DEBUG] on_request_write por QUIT: intentando enviar %zu bytes\n", count);
         ssize_t w = send(sess->sockfd, out, count, 0);
-        fprintf(stderr, "[DEBUG] enviados %zd bytes\n", w);
         if (w <= 0) {
             if (w < 0) perror("send() en on_request_write");
             return METP_ERROR;
@@ -568,12 +529,10 @@ static unsigned on_request_write(struct selector_key *key) {
 
 
     if (sess->must_close && !buffer_can_read(&sess->write_buffer)) {
-        fprintf(stderr, "[DEBUG] cerrando conexión por QUIT\n");
 
         struct selector_key sk = *key;  // copiamos el key por si key->data desaparece
         selector_unregister_fd(sk.s, sk.fd);
         close(sk.fd);
-        fprintf(stderr, "[DEBUG] liberando sess (sock=%d)\n", sk.fd);
 
         return METP_DONE;
     }
@@ -587,8 +546,6 @@ static unsigned on_request_write(struct selector_key *key) {
 }
 
 static void on_error_arrival(const unsigned state, struct selector_key *key) {
-    fprintf(stderr, "[DEBUG] entra en on_error_arrival\n");
-    fflush(stderr);
     metp_session *sess = key->data;
     if (!buffer_can_read(&sess->write_buffer)) {
         respuesta_error("500 Internal Server Error\n", key);
@@ -598,8 +555,6 @@ static void on_error_arrival(const unsigned state, struct selector_key *key) {
 
 static unsigned on_error_write(struct selector_key *key) {
     metp_session *sess = key->data;
-    fprintf(stderr, "[DEBUG] entra en on_error_write (sock=%d)\n", sess->sockfd);
-    fflush(stderr);
     size_t count;
     uint8_t *out = buffer_read_ptr(&sess->write_buffer, &count);
     if (count > 0) send(sess->sockfd, out, count, 0);

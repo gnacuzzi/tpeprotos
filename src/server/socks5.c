@@ -91,7 +91,6 @@ const struct state_definition *get_socks5_states(void) {
 
 //GREETING
 static void on_greet(const unsigned state, struct selector_key *key) {
-    fprintf(stderr,"[DBG] Arriving at SOCKS5_GREETING state\n");
     socks5_session *s = key->data;
     s->parsers.greeting.req.version = 0x05; 
     s->parsers.greeting.req.nmethods = 0; 
@@ -103,7 +102,6 @@ static void on_greet(const unsigned state, struct selector_key *key) {
 }
 
 static unsigned on_greet_read(struct selector_key *key) {
-    fprintf(stderr,"[DBG] Reading SOCKS5_GREETING state\n");
     socks5_session *s = key->data;
     socks5_greeting *g = &s->parsers.greeting;
     buffer *buf = &s->c2p_read;
@@ -164,7 +162,6 @@ static unsigned on_greet_read(struct selector_key *key) {
 
 
 static unsigned on_greet_write(struct selector_key *key) {
-    fprintf(stderr,"[DBG] Writing SOCKS5_GREETING_REPLY state\n");
     socks5_session *s = key->data;
     buffer *buf = &s->p2c_write;
     size_t n; uint8_t *ptr = buffer_read_ptr(buf, &n);
@@ -185,14 +182,12 @@ static unsigned on_greet_write(struct selector_key *key) {
 
 
 static void on_authentication(const unsigned state, struct selector_key *key) {
-    fprintf(stderr,"[DBG] Arriving at SOCKS5_METHOD state\n");
     socks5_session *s = key->data;
     authentication_init(&s->parsers.authentication);
 }
 
 //AUTH
 static unsigned on_authentication_read(struct selector_key *key) {
-    fprintf(stderr,"[DBG] Reading SOCKS5_METHOD state\n");
     socks5_session *s = key->data;
     socks5_authentication *auth = &s->parsers.authentication;
     buffer *buf = &s->c2p_read;
@@ -212,7 +207,6 @@ static unsigned on_authentication_read(struct selector_key *key) {
 
     bool error = false;
     authentication_idx idx = authentication_parse(auth, buf, &error);
-    fprintf(stderr,"[DBG] Authentication parse returned idx: %d\n", idx);
 
     if (error) {
         generate_authentication_response(&s->p2c_write, AUTHENTICATION_STATUS_FAILED);
@@ -242,7 +236,6 @@ static unsigned on_authentication_read(struct selector_key *key) {
 }
 
 static unsigned on_authentication_write(struct selector_key *key) {
-    fprintf(stderr,"[DBG] Writing SOCKS5_METHOD_REPLY state\n");
     socks5_session *s = key->data;
     size_t count; 
     uint8_t *bufptr = buffer_read_ptr(&s->p2c_write, &count);
@@ -272,7 +265,6 @@ static int generate_authentication_response(buffer *buf, uint8_t status) {
 
 //REQUEST
 static void on_request(const unsigned state, struct selector_key *key) {
-    fprintf(stderr,"[DBG] Arriving at SOCKS5_REQUEST state\n");
     selector_set_interest_key(key, OP_READ);
 }
 static int fill_bound_address(int fd, socks5_address *addr) {
@@ -298,7 +290,6 @@ static int fill_bound_address(int fd, socks5_address *addr) {
 }
 
 static unsigned on_request_read(struct selector_key *key) {
-    fprintf(stderr,"[DBG] Reading SOCKS5_REQUEST state\n");
     socks5_session *s = key->data;
     buffer         *buf = &s->c2p_read;
     size_t          space;
@@ -342,13 +333,9 @@ static unsigned on_request_read(struct selector_key *key) {
                 }
                 selector_set_interest_key(key, OP_NOOP);
                 selector_register(key->s, s->remote_fd, &socks5_handler, OP_WRITE, s);
-                fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST_CONNECT state, not enough data\n");
-                fflush(stderr);
                 return SOCKS5_REQUEST_CONNECT;
             case SOCKS5_CMD_BIND:
                 selector_set_interest_key(key, OP_WRITE);
-                fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST_BIND state, not enough data\n");
-                fflush(stderr);
                 return SOCKS5_REQUEST_BIND;
             case SOCKS5_CMD_UDP_ASSOCIATE:
                 return SOCKS5_ERROR;
@@ -360,7 +347,6 @@ static unsigned on_request_read(struct selector_key *key) {
 } 
 
 static unsigned on_request_connect_write(struct selector_key *key) {
-    fprintf(stderr,"[DBG] Writing SOCKS5_REQUEST_CONNECT state\n");
     socks5_session *s = key->data;
     int rfd = s->remote_fd;
 
@@ -387,8 +373,6 @@ static unsigned on_request_connect_write(struct selector_key *key) {
     s->stm.current = &s->stm.states[SOCKS5_REQUEST_REPLY];
     selector_set_interest(key->s, s->client_fd, OP_WRITE);
     selector_set_interest(key->s, s->remote_fd, OP_READ);
-    fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST_REPLY state, not enough data\n");
-    fflush(stderr);
     return SOCKS5_REQUEST_REPLY;
 }
 
@@ -415,8 +399,6 @@ static unsigned on_request_bind_write(struct selector_key *key) {
     free(out);
 
     selector_set_interest_key(key, OP_WRITE);
-    fprintf(stderr, "[DBG] leaving to SOCKS5_REQUEST_REPLY state, not enough data\n");
-    fflush(stderr);
     return SOCKS5_REQUEST_REPLY;
 }
 
@@ -437,7 +419,6 @@ static unsigned on_request_forward_read(struct selector_key *key) {
     ssize_t n = recv(fd, dst, space, 0);
     if (n <= 0) return SOCKS5_CLOSING;
 
-    fprintf(stderr, "[DBG] forward_read  fd=%d → %zd bytes\n", fd, n);
     buffer_write_adv(wbuf, n);
 
     if (s->user != NULL) {
@@ -463,7 +444,6 @@ static unsigned on_request_forward_write(struct selector_key *key) {
 
     size_t to_send;
     uint8_t *src = buffer_read_ptr(rbuf, &to_send);
-    fprintf(stderr, "[DBG] forward_write fd=%d → %zu bytes\n", fd, to_send);
     ssize_t sent = send(fd, src, to_send, MSG_NOSIGNAL);
     if (sent <= 0) {
         return SOCKS5_CLOSING;

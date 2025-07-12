@@ -76,8 +76,8 @@ bool add_user(const char *username, const char *password, user_role role) {
         }
     }
 
-    users[user_count].username = strdup(username);
-    users[user_count].password = strdup(password);
+    users[user_count].username = my_strdup(username);
+    users[user_count].password = my_strdup(password);
     if (!users[user_count].username || !users[user_count].password) {
         perror("strdup");
         free(users[user_count].username);

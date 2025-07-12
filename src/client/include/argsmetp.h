@@ -18,6 +18,7 @@ enum metp_mode {
     MODE_NONE,
     MODE_GET_LOGS,
     MODE_GET_METRICS,
+    MODE_USERS,
     MODE_CHANGE_BUFFER,
     MODE_ADD_USER,
     MODE_DELETE_USER,

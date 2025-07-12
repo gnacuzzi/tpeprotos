@@ -55,12 +55,23 @@ typedef struct {
     proxy_log_entry *entries;
 } proxy_log_list;
 
+typedef struct {
+    char *username;
+    char *role;
+} proxy_user_entry;
+
+typedef struct {
+    uint8_t count;
+    proxy_user_entry *entries;
+} proxy_user_list;
+
 pc_connect_status proxy_connect(const char *host, unsigned short port, const proxy_user *user);
 void proxy_close(void);
 pc_response_status proxy_quit(void);
 
 pc_response_status proxy_get_metrics(proxy_metrics *m);
 pc_response_status proxy_get_logs (proxy_log_list *L);
+pc_response_status proxy_get_users(proxy_user_list *U);
 
 pc_response_status proxy_set_max_io_buffer (uint64_t bytes);
 pc_response_status proxy_add_user (const proxy_user *u);
@@ -68,6 +79,7 @@ pc_response_status proxy_remove_user (const char *username);
 pc_response_status proxy_set_role (const char *username, const char *role);
 
 void free_proxy_log_list(proxy_log_list *L);
+void free_proxy_user_list(proxy_user_list *U);
 
 const char* pc_connect_status_to_string(pc_connect_status status);
 

@@ -227,6 +227,52 @@ pc_response_status proxy_get_logs(proxy_log_list *L) {
     return PC_RES_SUCCESS;
 }
 
+pc_response_status proxy_get_users(proxy_user_list *U) {
+    if (!is_connected) return PC_RES_SERV_FAIL;
+    char line[BUFFER_SIZE];
+
+    if (send_full(sockfd, "USERS\n", strlen("USERS\n")) <= 0)
+        return PC_RES_SERV_FAIL;
+
+    if (recv_line(sockfd, line, sizeof(line)) <= 0) {
+        return PC_RES_SERV_FAIL;
+    }
+    if (strncmp(line, "200", 3) == 0) {
+    } else if (strncmp(line, "403", 3) == 0) {
+        return PC_RES_NOT_AUTHORIZED;
+    } else {
+        return PC_RES_CMD_FAIL;
+    }
+
+    size_t cap = 16, cnt = 0;
+    U->entries = malloc(cap * sizeof(*U->entries));
+    U->count   = 0;
+
+    while (recv_line(sockfd, line, sizeof(line)) > 0) {
+        if (strcmp(line, ".\n") == 0) break;
+        char username[64], role[64];
+        if (sscanf(line, "%63s %63s", username, role) == 2) {
+            if (cnt >= cap) {
+                cap *= 2;
+                U->entries = realloc(U->entries, cap * sizeof(*U->entries));
+            }
+            proxy_user_entry *e = &U->entries[cnt++];
+            e->username = my_strdup(username);
+            e->role    = my_strdup(role);
+        }
+    }
+    U->count = cnt;
+    return PC_RES_SUCCESS;
+}
+
+void free_proxy_user_list(proxy_user_list *U) {
+    for (size_t i = 0; i < U->count; i++) {
+        free(U->entries[i].username);
+        free(U->entries[i].role);
+    }
+    free(U->entries);
+}
+
 void free_proxy_log_list(proxy_log_list *L) {
     for (size_t i = 0; i < L->count; i++) {
         free(L->entries[i].timestamp);

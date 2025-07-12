@@ -68,6 +68,22 @@ int main(int argc, char **argv) {
         break;
     }
 
+    case MODE_USERS: {
+        proxy_user_list users;
+        rst = proxy_get_users(&users);
+        if (rst == PC_RES_SUCCESS) {
+            for (uint8_t i = 0; i < users.count; i++) {
+                proxy_user_entry *e = &users.entries[i];
+                printf("%s %s\n", e->username, e->role);
+            }
+            free_proxy_user_list(&users);
+        } else {
+            fprintf(stderr, "%s\n",
+                    pc_response_status_to_string(rst));
+        }
+        break;
+    }
+
     case MODE_CHANGE_BUFFER:
         rst = proxy_set_max_io_buffer(args.cb_size);
         printf("%s\n", pc_response_status_to_string(rst));

@@ -42,6 +42,7 @@ static void usage(const char *prog) {
         "  -u <user>:<pass>  Credenciales de autenticación\n"
         "  -g                GET_LOGS\n"
         "  -m                GET_METRICS\n"
+        "  -l                USERS\n"
         "  -c <size>         CHANGE-BUFFER\n"
         "  -a <user> <pass>  ADD-USER\n"
         "  -d <user>         DELETE-USER\n"
@@ -72,13 +73,14 @@ void parsemetp_args(int argc, char **argv, metpargs *args) {
         {"user",    required_argument, 0, 'u'},
         {"gl",      no_argument,       0, 'g'},
         {"gm",      no_argument,       0, 'm'},
+        {"users",   no_argument,       0, 'l'},
         {"cb",      required_argument, 0, 'c'},
         {"au",      required_argument, 0, 'a'},
         {"du",      required_argument, 0, 'd'},
         {"sr",      required_argument, 0, 'r'},
         {0,0,0,0}
     };
-    const char *optstring = "hvp:u:gmc:a:d:r:";
+    const char *optstring = "hvp:u:gmllc:a:d:r:";
 
     while ((opt = getopt_long(argc, argv, optstring, long_opts, NULL)) != -1) {
         switch (opt) {
@@ -102,6 +104,9 @@ void parsemetp_args(int argc, char **argv, metpargs *args) {
             break;
         case 'm':
             args->mode = MODE_GET_METRICS;
+            break;
+        case 'l':
+            args->mode = MODE_USERS;
             break;
         case 'c':
             args->cb_size = strtoull(optarg, NULL, 10);

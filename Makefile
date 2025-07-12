@@ -19,7 +19,7 @@ CLIENT_OBJECTS := $(patsubst %.c,$(OBJECTS_FOLDER)/%.o,$(subst $(SRC_DIR)/,,$(CL
 UTILS_OBJECTS := $(patsubst %.c,$(OBJECTS_FOLDER)/%.o,$(subst $(SRC_DIR)/,,$(UTILS_SOURCES)))
 TEST_OBJECTS := $(patsubst %.c,$(OBJECTS_FOLDER)/%.o,$(TEST_SOURCES))
 
-SERVER_OUTPUT_FILE := $(OUTPUT_FOLDER)/socks5
+SERVER_OUTPUT_FILE := $(OUTPUT_FOLDER)/socks5d
 CLIENT_OUTPUT_FILE := $(OUTPUT_FOLDER)/client
 TEST_OUTPUTS := $(patsubst $(TEST_DIR)/%.c,$(OUTPUT_FOLDER)/%_test,$(TEST_SOURCES))
 

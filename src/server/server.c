@@ -309,7 +309,12 @@ int main(int argc, char ** argv) {
         add_user(u->username, u->password, u->role);
     }
 
-    selector_init(&(struct selector_init){.signal = SIGALRM});
+    selector_init(&(struct selector_init){
+        .signal = SIGALRM,
+        .select_timeout.tv_sec = 0,
+        .select_timeout.tv_nsec = 100000000
+    });
+
     fd_selector sel = selector_new(1024); //magic number
     if (sel == NULL) {
         perror("Failed to create selector");

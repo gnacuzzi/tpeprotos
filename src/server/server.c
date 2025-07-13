@@ -12,9 +12,12 @@
 
 
 #define BUF_SIZE 4096
+#define MAX_PORT_STR_LEN 8
+#define SELECT_TIMEOUT_SEC 0
+#define SELECT_TIMEOUT_NSEC 100000000
+#define MAX_SELECTOR_FDS 1024
+#define MAX_PORT_VALUE 65535
 
-//TODO: global del archivo, programacion defensiva, mejorar manejo de errores
-//TODO: mejorar close
 static void socks5_close(struct selector_key *key) {
     if (key == NULL || key->data == NULL) {
         return;
@@ -193,7 +196,9 @@ const struct fd_handler socks5_handler = {
 };
 
 static void accept_socks5(struct selector_key *key) {
-    int client_fd = accept(key->fd, NULL, NULL);
+    struct sockaddr_storage ss;
+    socklen_t sl = sizeof(ss);
+    int client_fd = accept(key->fd, (struct sockaddr *)&ss, &sl);
     if (client_fd == -1) {
         perror("Failed to accept SOCKS5 connection");
         return;
@@ -222,17 +227,13 @@ static void accept_socks5(struct selector_key *key) {
     s->stm.initial   = SOCKS5_GREETING;
     s->stm.max_state = SOCKS5_CLOSING;
     stm_init(&s->stm);
-    
-    //TODO: revisar lo de abajo y parametros del accept null null
-    struct sockaddr_storage ss; socklen_t sl = sizeof ss;
-    if (getpeername(client_fd, (struct sockaddr*)&ss, &sl) == 0) {
-        if (ss.ss_family == AF_INET) {
-            struct sockaddr_in *in4 = (void*)&ss;
-            inet_ntop(AF_INET, &in4->sin_addr, s->source_ip, sizeof s->source_ip);
-        } else {
-            struct sockaddr_in6 *in6 = (void*)&ss;
-            inet_ntop(AF_INET6, &in6->sin6_addr, s->source_ip, sizeof s->source_ip);
-        }
+
+    if (ss.ss_family == AF_INET) {
+        struct sockaddr_in *in4 = (void*)&ss;
+        inet_ntop(AF_INET, &in4->sin_addr, s->source_ip, sizeof s->source_ip);
+    } else if (ss.ss_family == AF_INET6) {
+        struct sockaddr_in6 *in6 = (void*)&ss;
+        inet_ntop(AF_INET6, &in6->sin6_addr, s->source_ip, sizeof s->source_ip);
     }
     s->bytes_transferred = 0;
 
@@ -311,20 +312,27 @@ int main(int argc, char ** argv) {
 
     selector_init(&(struct selector_init){
         .signal = SIGALRM,
-        .select_timeout.tv_sec = 0,
-        .select_timeout.tv_nsec = 100000000
+        .select_timeout.tv_sec = SELECT_TIMEOUT_SEC,
+        .select_timeout.tv_nsec = SELECT_TIMEOUT_NSEC
     });
 
-    fd_selector sel = selector_new(1024); //magic number
+    fd_selector sel = selector_new(MAX_SELECTOR_FDS);
     if (sel == NULL) {
         perror("Failed to create selector");
         return 1;
     }
 
-    // Todo: chequear
-    char socks_port_str[8], mng_port_str[8];
-    snprintf(socks_port_str, sizeof(socks_port_str), "%u", args.socks_port);
-    snprintf(mng_port_str, sizeof(mng_port_str), "%u", args.mng_port);
+    char socks_port_str[MAX_PORT_STR_LEN], mng_port_str[MAX_PORT_STR_LEN];
+
+    if (args.socks_port > MAX_PORT_VALUE || args.mng_port > MAX_PORT_VALUE) {
+        fprintf(stderr, "Port number exceeds %d\n", MAX_PORT_VALUE);
+        return 1;
+    }
+    if (snprintf(socks_port_str, sizeof socks_port_str, "%u", args.socks_port) >= sizeof socks_port_str ||
+    snprintf(mng_port_str, sizeof mng_port_str, "%u", args.mng_port) >= sizeof mng_port_str) {
+        fprintf(stderr, "Port string truncated.\n");
+        return 1;
+    }
 
     // 1) Listener SOCKS5
     int s5_fd = create_listener(args.socks_addr, socks_port_str);
@@ -381,7 +389,7 @@ int main(int argc, char ** argv) {
     selector_destroy(sel);
     close(s5_fd);
     close(m_fd);
-    free_users(); //TODO: en realidad no liberamos nada, chequear
+    free_users();
     return 0;
 }
 

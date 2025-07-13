@@ -343,7 +343,10 @@ static unsigned on_request_read(struct selector_key *key) {
                 return SOCKS5_ERROR;
         }
     }
-    return SOCKS5_REQUEST; //TODO: no se si esto esta bien pero sino me tiraba un warning
+    if (avail < 4) {
+        return SOCKS5_REQUEST;  // esperar más datos
+    }
+    return SOCKS5_ERROR;
 } 
 
 static unsigned on_request_connect_write(struct selector_key *key) {

@@ -66,29 +66,31 @@ user_role get_user_role(const char *username) {
 }
 
 bool add_user(const char *username, const char *password, user_role role) {
-    if (!username || !password || user_count >= MAX_USERS) {
-        return false;
-    }
+    if (!username || !password) return false;
 
     for (int i = 0; i < user_count; i++) {
-        if (strcmp(users[i].username, username) == 0) {
-            return false;
+        if (users[i].is_active && strcmp(users[i].username, username) == 0) {
+            return false; 
         }
     }
 
-    users[user_count].username = my_strdup(username);
-    users[user_count].password = my_strdup(password);
-    if (!users[user_count].username || !users[user_count].password) {
-        perror("strdup");
-        free(users[user_count].username);
-        free(users[user_count].password);
-        return false;
+    for (int i = 0; i < user_count; i++) {
+        if (!users[i].is_active) {
+            users[i].username = my_strdup(username);
+            users[i].password = my_strdup(password);
+            users[i].role = role;
+            users[i].is_active = true;
+            return true;
+        }
     }
 
-    users[user_count].role      = role;
+    if (user_count >= MAX_USERS) return false;
+
+    users[user_count].username = my_strdup(username);
+    users[user_count].password = my_strdup(password);
+    users[user_count].role = role;
     users[user_count].is_active = true;
     user_count++;
-
     return true;
 }
 

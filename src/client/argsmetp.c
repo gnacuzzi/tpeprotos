@@ -113,9 +113,10 @@ void parsemetp_args(int argc, char **argv, metpargs *args) {
             args->mode = MODE_CHANGE_BUFFER;
             break;
         case 'a': {
-            if (optind >= argc) {
+            if (optind >= argc || optarg == NULL) {
                 fprintf(stderr, "-a requiere user y pass\n");
                 usage(argv[0]);
+                exit(1);
             }
             strncpy(args->users[args->nusers].name, optarg, MAX_NAME - 1);
             strncpy(args->users[args->nusers].pass, argv[optind++], MAX_PASS - 1);
@@ -128,9 +129,10 @@ void parsemetp_args(int argc, char **argv, metpargs *args) {
             args->mode = MODE_DELETE_USER;
             break;
         case 'r': {
-            if (optind >= argc) {
+            if (optind >= argc || optarg == NULL) {
                 fprintf(stderr, "-r requiere user y role\n");
                 usage(argv[0]);
+                exit(1);
             }
             strncpy(args->sr_user, optarg, MAX_NAME - 1);
             strncpy(args->sr_role, argv[optind++], MAX_ROLE - 1);

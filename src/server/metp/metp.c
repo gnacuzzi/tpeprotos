@@ -11,7 +11,7 @@ static void on_error_arrival(const unsigned state, struct selector_key *key);
 static unsigned on_error_write(struct selector_key *key);
 static void respuesta_error(const char *msg, struct selector_key *key);
 
-static size_t io_buffer_size = BUFFER_SIZE;
+static size_t socks5_buffer_size = BUFFER_SIZE;
 
 static const struct state_definition metp_states[] = {
     [METP_HELLO] = {
@@ -351,13 +351,8 @@ static unsigned on_request_read(struct selector_key *key) {
                     if (new_size <= 0) {
                         respuesta_error("400 Bad Request\n", key);
                     } else {
-                        if (!set_io_buffer_size((size_t)new_size)) {
-                            respuesta_error("400 Bad Request\n", key);
-                        } else if (!resize_metp_buffers(sess, (size_t)new_size)) {
-                            respuesta_error("500 Internal Server Error\n", key);
-                        } else {
-                            respuesta_ok(key);
-                        }
+                        socks5_buffer_size = (size_t)new_size;
+                        respuesta_ok(key);
 
                     }
                 }
@@ -544,50 +539,6 @@ static unsigned on_error_write(struct selector_key *key) {
     return METP_DONE;
 }
 
-bool set_io_buffer_size(size_t size) {
-    if (size == 0 || size > MAX_BUFFER_SIZE)
-        return false;
-    io_buffer_size = size;
-    return true;
-}
-
-size_t get_io_buffer_size(void) {
-    return io_buffer_size;
-}
-
-bool resize_metp_buffers(metp_session *s, size_t new_size) {
-    if (!s || new_size == 0 || new_size > MAX_BUFFER_SIZE) {
-        return false;
-    }
-
-    size_t read_len, write_len;
-    uint8_t *read_data  = buffer_read_ptr(&s->read_buffer, &read_len);
-    uint8_t *write_data = buffer_read_ptr(&s->write_buffer, &write_len);
-
-    uint8_t *new_read  = malloc(new_size);
-    uint8_t *new_write = malloc(new_size);
-    if (!new_read || !new_write) {
-        free(new_read); free(new_write);
-        return false;
-    }
-
-    buffer new_rbuf, new_wbuf;
-    buffer_init(&new_rbuf, new_size, new_read);
-    buffer_init(&new_wbuf, new_size, new_write);
-
-    for (size_t i = 0; i < read_len && buffer_can_write(&new_rbuf); i++)
-        buffer_write(&new_rbuf, read_data[i]);
-
-    for (size_t i = 0; i < write_len && buffer_can_write(&new_wbuf); i++)
-        buffer_write(&new_wbuf, write_data[i]);
-
-    free(s->raw_read_buffer);
-    free(s->raw_write_buffer);
-    s->raw_read_buffer = new_read;
-    s->raw_write_buffer = new_write;
-    s->read_buffer = new_rbuf;
-    s->write_buffer = new_wbuf;
-    s->buffer_size = new_size;
-
-    return true;
+size_t get_io_buffer_size(void){
+    return socks5_buffer_size;
 }

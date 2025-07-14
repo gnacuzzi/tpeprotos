@@ -17,8 +17,7 @@
 #include "../../utils/include/buffer.h"
 #include "../../utils/include/selector.h"
 
-#define BUFFER_SIZE 1024
-#define MAX_BUFFER_SIZE 2048
+#define BUFFER_SIZE 4096
 #define METP_VERSION  "METP/1.0"
 
 typedef enum {
@@ -68,8 +67,6 @@ typedef struct {
 
 const struct state_definition *get_metp_states(void);
 
-bool set_io_buffer_size(size_t size);
 size_t get_io_buffer_size(void);
-bool resize_metp_buffers(metp_session *s, size_t new_size);
 
 #endif

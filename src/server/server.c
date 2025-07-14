@@ -12,6 +12,7 @@
 
 
 #define BUF_SIZE 4096
+#define METP_BUFFER_SIZE 1024
 #define MAX_PORT_STR_LEN 8
 #define SELECT_TIMEOUT_SEC 0
 #define SELECT_TIMEOUT_NSEC 100000000
@@ -145,10 +146,9 @@ static void accept_metp(struct selector_key *key) {
     m->is_authenticated = false;
     m->must_close = false;
 
-    size_t size = get_io_buffer_size();
-    m->raw_read_buffer = malloc(size);
-    m->raw_write_buffer = malloc(size);
-    m->buffer_size = size;
+    m->raw_read_buffer = malloc(METP_BUFFER_SIZE);
+    m->raw_write_buffer = malloc(METP_BUFFER_SIZE);
+    m->buffer_size = METP_BUFFER_SIZE;
 
     if (!m->raw_read_buffer || !m->raw_write_buffer) {
         perror("Failed to allocate METP buffers");
@@ -159,8 +159,8 @@ static void accept_metp(struct selector_key *key) {
         return;
     }
 
-    buffer_init(&m->read_buffer, size, m->raw_read_buffer);
-    buffer_init(&m->write_buffer, size, m->raw_write_buffer);
+    buffer_init(&m->read_buffer, METP_BUFFER_SIZE, m->raw_read_buffer);
+    buffer_init(&m->write_buffer, METP_BUFFER_SIZE, m->raw_write_buffer);
 
     m->stm.states    = get_metp_states();
     m->stm.initial   = METP_HELLO;
@@ -219,10 +219,11 @@ static void accept_socks5(struct selector_key *key) {
     }
     
     s->client_fd = client_fd;  s->remote_fd = -1;  s->is_closing = false;
-    buffer_init(&s->c2p_read,  BUF_SIZE, s->raw_c2p_r);
-    buffer_init(&s->c2p_write, BUF_SIZE, s->raw_c2p_w);
-    buffer_init(&s->p2c_read,  BUF_SIZE, s->raw_p2c_r);
-    buffer_init(&s->p2c_write, BUF_SIZE, s->raw_p2c_w);
+    size_t size = get_io_buffer_size();
+    buffer_init(&s->c2p_read,  size, s->raw_c2p_r);
+    buffer_init(&s->c2p_write, size, s->raw_c2p_w);
+    buffer_init(&s->p2c_read,  size, s->raw_p2c_r);
+    buffer_init(&s->p2c_write, size, s->raw_p2c_w);
     s->stm.states    = get_socks5_states();
     s->stm.initial   = SOCKS5_GREETING;
     s->stm.max_state = SOCKS5_REQUEST_RESOLV;

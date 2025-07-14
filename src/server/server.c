@@ -220,7 +220,7 @@ static void accept_socks5(struct selector_key *key) {
     buffer_init(&s->p2c_write, BUF_SIZE, s->raw_p2c_w);
     s->stm.states    = get_socks5_states();
     s->stm.initial   = SOCKS5_GREETING;
-    s->stm.max_state = SOCKS5_CLOSING;
+    s->stm.max_state = SOCKS5_REQUEST_RESOLV;
     stm_init(&s->stm);
 
     increment_current_connections();

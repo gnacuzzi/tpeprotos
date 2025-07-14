@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <pthread.h>
 
 #include <netinet/in.h>   
 #include "greeting.h"
@@ -34,7 +35,8 @@ typedef enum {
     SOCKS5_REQUEST_BIND, 
     SOCKS5_STREAM, 
     SOCKS5_ERROR,          
-    SOCKS5_CLOSING           
+    SOCKS5_CLOSING,
+    SOCKS5_REQUEST_RESOLV           
 } socks5_state;
 
 typedef struct {
@@ -65,6 +67,10 @@ typedef struct {
 
     struct user * user;
     int log_id;
+
+    /* Campos para resolución asíncrona */
+    struct addrinfo *resolved_addr;         // lista resultante de getaddrinfo
+    struct addrinfo *resolved_addr_current; // puntero al nodo actual para conectar
 } socks5_session;
 
 const struct state_definition *get_socks5_states(void);

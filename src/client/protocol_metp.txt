@@ -1,7 +1,6 @@
 METP Protocol Version 1.0
 Author: grupo11
 Date: 2025-06-28
-Status: Draft
 
 1. Introduction
    METP es un protocolo basado en texto, orientado a conexión TCP,

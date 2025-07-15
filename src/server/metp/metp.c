@@ -257,7 +257,6 @@ static void respuesta_error(const char *msg, struct selector_key *key) {
 }
 
 
-//TODO: agregar manejo de error tipo 500, quizas seria en el handler error
 static unsigned on_request_read(struct selector_key *key) {
     metp_session *sess = key->data;
     size_t cap;
@@ -397,7 +396,6 @@ static unsigned on_request_read(struct selector_key *key) {
                 }
                 state = METP_REQUEST_REPLY;
             }
-            //TODO: agregar manejo de error
             else if (cmd && strcmp(cmd, "USERS") == 0) {
                 if (!can_user_execute_command(sess->authenticated_user, "USERS")) {
                     respuesta_error("403 Forbidden\n", key);

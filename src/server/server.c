@@ -12,7 +12,6 @@
 
 
 #define BUF_SIZE 4096
-#define METP_BUFFER_SIZE 1024
 #define MAX_PORT_STR_LEN 8
 #define SELECT_TIMEOUT_SEC 0
 #define SELECT_TIMEOUT_NSEC 100000000
@@ -28,8 +27,6 @@ static void socks5_close(struct selector_key *key) {
         return;
     }
     s->is_closing = true;
-    fprintf(stderr, "Closing SOCKS5 session for fd %d\n", s->client_fd);
-
     stm_handler_close(&s->stm, key);
 
     if (s->remote_fd >= 0) {
@@ -96,7 +93,6 @@ static void metp_write(struct selector_key *key) {
         free(s->raw_write_buffer);
         free(s);
         key->data = NULL;
-        fprintf(stderr, "Closing METP session for fd %d\n", key->fd);
         return;
     }
 
@@ -146,9 +142,9 @@ static void accept_metp(struct selector_key *key) {
     m->is_authenticated = false;
     m->must_close = false;
 
-    m->raw_read_buffer = malloc(METP_BUFFER_SIZE);
-    m->raw_write_buffer = malloc(METP_BUFFER_SIZE);
-    m->buffer_size = METP_BUFFER_SIZE;
+    m->raw_read_buffer = malloc(BUF_SIZE);
+    m->raw_write_buffer = malloc(BUF_SIZE);
+    m->buffer_size = BUF_SIZE;
 
     if (!m->raw_read_buffer || !m->raw_write_buffer) {
         perror("Failed to allocate METP buffers");
@@ -159,8 +155,8 @@ static void accept_metp(struct selector_key *key) {
         return;
     }
 
-    buffer_init(&m->read_buffer, METP_BUFFER_SIZE, m->raw_read_buffer);
-    buffer_init(&m->write_buffer, METP_BUFFER_SIZE, m->raw_write_buffer);
+    buffer_init(&m->read_buffer, BUF_SIZE, m->raw_read_buffer);
+    buffer_init(&m->write_buffer, BUF_SIZE, m->raw_write_buffer);
 
     m->stm.states    = get_metp_states();
     m->stm.initial   = METP_HELLO;

@@ -3,6 +3,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 
 extern const struct fd_handler socks5_handler;
 
@@ -457,6 +458,7 @@ static unsigned on_request_resolv(struct selector_key *key) {
     free(out);
 
     selector_set_interest_key(key, OP_WRITE);
+
     return SOCKS5_CLOSING;
 }
 
@@ -595,9 +597,37 @@ static unsigned on_request_forward_write(struct selector_key *key) {
 }
 
 static int init_remote_connection(socks5_session *s, struct selector_key *key) {
+    socks5_request *req = &s->parsers.request.request;
+
+    char hoststr[INET6_ADDRSTRLEN];
+    const char *name;
+
+    switch (req->dst.atyp) {
+      case SOCKS5_ATYP_IPV4:
+          inet_ntop(AF_INET,  req->dst.addr.ipv4, hoststr, sizeof(hoststr));
+          name = hoststr;
+          break;
+      case SOCKS5_ATYP_IPV6:
+          inet_ntop(AF_INET6, req->dst.addr.ipv6, hoststr, sizeof(hoststr));
+          name = hoststr;
+          break;
+      case SOCKS5_ATYP_DOMAIN:
+          memcpy(hoststr,
+                 req->dst.addr.domain.name,
+                 req->dst.addr.domain.len);
+          hoststr[req->dst.addr.domain.len] = '\0';
+          name = hoststr;
+          break;
+      default:
+          return SOCKS5_ERROR;
+    }
+
+    char portstr[6];
+    snprintf(portstr, sizeof(portstr), "%u", req->dst.port);
+
     int sock = socket(s->remote_domain, SOCK_STREAM, 0);
     if (sock < 0) {
-        perror("socket"); 
+        perror("socket");
         return SOCKS5_ERROR;
     }
 
@@ -624,10 +654,28 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key) {
         return SOCKS5_ERROR;
     }
 
+    snprintf(s->dest_str, sizeof(s->dest_str), "%s:%s", name, portstr);
+    s->log_id = log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, 0);
+
+    time_t now = time(NULL);
+    struct tm *tm_info = gmtime(&now);
+    fprintf(stdout,
+        "[%04d-%02d-%02dT%02d:%02d:%02dZ] %s %s %s %d\n",
+        tm_info->tm_year + 1900,
+        tm_info->tm_mon  + 1,
+        tm_info->tm_mday,
+        tm_info->tm_hour,
+        tm_info->tm_min,
+        tm_info->tm_sec,
+        s->user ? s->user->username : "<anon>",
+        s->source_ip,
+        s->dest_str,
+        0
+        );
+    fflush(stdout);
+
     return SOCKS5_REQUEST_CONNECT;
 }
-
-
 
 // CLOSING
 static unsigned on_closing_read(struct selector_key *key) {

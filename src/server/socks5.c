@@ -224,40 +224,43 @@ static unsigned on_authentication_read(struct selector_key *key) {
     }
 
     if (idx == AUTHENTICATION_DONE) {
-        s->user = authenticate_user(&auth->req.cred);
-        uint8_t status = (s->user != NULL)
-                         ? AUTHENTICATION_STATUS_SUCCESS
-                         : AUTHENTICATION_STATUS_FAILED;
+        struct user *u = authenticate_user(&auth->req.cred);
+        s->user = u;
+        s->auth_status = (u != NULL)
+                          ? AUTHENTICATION_STATUS_SUCCESS
+                          : AUTHENTICATION_STATUS_FAILED;
 
-          if (status == AUTHENTICATION_STATUS_FAILED) {
-            fprintf(stderr, "Authentication failed for user '%s' on fd %d\n", s->parsers.authentication.req.cred.usernme, key->fd);
-        } else {
-            fprintf(stderr, "User '%s' authenticated successfully on fd %d\n", s->user->username, key->fd);
-        }
-
-        generate_authentication_response(&s->p2c_write, status);
-
+        generate_authentication_response(&s->p2c_write, s->auth_status);
         selector_set_interest_key(key, OP_WRITE);
+
         return SOCKS5_METHOD_REPLY;
     }
 
     return SOCKS5_METHOD;
 }
 
+
 static unsigned on_authentication_write(struct selector_key *key) {
     socks5_session *s = key->data;
-    
-    size_t count; 
-    uint8_t *bufptr = buffer_read_ptr(&s->p2c_write, &count);
-    ssize_t sent = send(key->fd, bufptr, count, MSG_NOSIGNAL);
-    if (sent < 0) {
-        return SOCKS5_ERROR;
+    buffer *w = &s->p2c_write;
+
+    size_t to_send; 
+    uint8_t *bufptr = buffer_read_ptr(w, &to_send);
+    ssize_t sent = send(key->fd, bufptr, to_send, MSG_NOSIGNAL);
+    if (sent <= 0) {
+        return SOCKS5_CLOSING;
     }
-    buffer_read_adv(&s->p2c_write, sent);
-    if (!buffer_can_read(&s->p2c_write)) {
-        selector_set_interest_key(key, OP_READ);
-        return SOCKS5_REQUEST;
+    buffer_read_adv(w, sent);
+
+    if (!buffer_can_read(w)) {
+        if (s->auth_status == AUTHENTICATION_STATUS_FAILED) {
+            return SOCKS5_CLOSING;
+        } else {
+            selector_set_interest_key(key, OP_READ);
+            return SOCKS5_REQUEST;
+        }
     }
+
     return SOCKS5_METHOD_REPLY;
 }
 
@@ -345,32 +348,59 @@ static unsigned on_request_read(struct selector_key *key) {
     int ret = socks5_parse_request(ptr, avail, &s->parsers.request.request, &consumed);
     if (ret == 0) {
         buffer_read_adv(buf, consumed);
-        if (s->parsers.request.request.cmd == SOCKS5_CMD_CONNECT &&
-            s->parsers.request.request.dst.atyp == SOCKS5_ATYP_DOMAIN) {
-            struct selector_key *k = malloc(sizeof(*k));
-            *k = *key;
-            pthread_t tid;
-            if (pthread_create(&tid, NULL, dns_resolve_thread, k) != 0) {
-                free(k);
-                return SOCKS5_ERROR;
-            }
-            pthread_detach(tid);
-            selector_set_interest_key(key, OP_NOOP);
-            return SOCKS5_REQUEST_RESOLV;
-        }
         switch (s->parsers.request.request.cmd) {
             case SOCKS5_CMD_CONNECT:
-                if (init_remote_connection(s, key) < 0) {
-                    socks5_reply rep = {.version = SOCKS5_VERSION, .rep = SOCKS5_REP_HOST_UNREACHABLE, .rsv = 0x00};
-                    rep.bnd.atyp = SOCKS5_ATYP_IPV4;
-                    memset(rep.bnd.addr.ipv4, 0, 4);
-                    rep.bnd.port = 0;
-                    uint8_t *out; size_t outlen;
-                    socks5_build_reply(&rep, &out, &outlen);
-                    for (size_t i = 0; i < outlen; i++) buffer_write(&s->p2c_write, out[i]);
-                    free(out);
-                    selector_set_interest_key(key, OP_WRITE);
-                    return SOCKS5_CLOSING;
+                switch (s->parsers.request.request.dst.atyp)
+                {
+                    case SOCKS5_ATYP_DOMAIN:
+                        struct selector_key *k = malloc(sizeof(struct selector_key));
+                        *k = *key;
+                        pthread_t tid;
+                        if (pthread_create(&tid, NULL, dns_resolve_thread, k) != 0) {
+                            free(k);
+                            return SOCKS5_ERROR;
+                        }
+                        pthread_detach(tid);
+                        selector_set_interest_key(key, OP_NOOP);
+                        return SOCKS5_REQUEST_RESOLV;
+                                        
+                    case SOCKS5_ATYP_IPV4: {
+                        s->remote_domain   = AF_INET;
+                        s->remote_addr_len = sizeof(struct sockaddr_in);
+                        struct sockaddr_in *addr4 = (struct sockaddr_in *)&s->remote_addr;
+
+                        addr4->sin_family = AF_INET;
+                        memcpy(&addr4->sin_addr,
+                            s->parsers.request.request.dst.addr.ipv4, 4);
+                        addr4->sin_port   = htons(s->parsers.request.request.dst.port);
+
+                        char ipbuf[INET_ADDRSTRLEN];
+                        inet_ntop(AF_INET,
+                                s->parsers.request.request.dst.addr.ipv4,
+                                ipbuf, sizeof(ipbuf));
+                        uint16_t port = s->parsers.request.request.dst.port;
+
+                        return init_remote_connection(s, key);
+                    }
+                    case SOCKS5_ATYP_IPV6: {
+                        s->remote_domain   = AF_INET6;
+                        s->remote_addr_len = sizeof(struct sockaddr_in6);
+                        struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&s->remote_addr;
+
+                        addr6->sin6_family = AF_INET6;
+                        memcpy(&addr6->sin6_addr,
+                            s->parsers.request.request.dst.addr.ipv6, 16);
+                        addr6->sin6_port = htons(s->parsers.request.request.dst.port);
+
+                        char ip6buf[INET6_ADDRSTRLEN];
+                        inet_ntop(AF_INET6,
+                                s->parsers.request.request.dst.addr.ipv6,
+                                ip6buf, sizeof(ip6buf));
+                        uint16_t port6 = s->parsers.request.request.dst.port;
+
+                        return init_remote_connection(s, key);
+                    }
+
                 }
                 selector_set_interest_key(key, OP_NOOP);
                 selector_register(key->s, s->remote_fd, &socks5_handler, OP_WRITE, s);
@@ -394,35 +424,39 @@ static unsigned on_request_resolv(struct selector_key *key) {
     socks5_session *s = key->data;
     struct addrinfo *res = s->resolved_addr;
     struct addrinfo *p = res;
+
     while (p) {
-        int rfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (rfd >= 0 && selector_fd_set_nio(rfd) == 0) {
-            int c = connect(rfd, p->ai_addr, p->ai_addrlen);
-            if (c == 0 || (c < 0 && errno == EINPROGRESS)) {
-                s->remote_fd = rfd;
-                snprintf(s->dest_str, sizeof(s->dest_str), "%s:%u",
-                    p->ai_canonname ? p->ai_canonname : "",
-                    ntohs(((struct sockaddr_in*)p->ai_addr)->sin_port));
-                s->log_id = log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, 0);
-                selector_register(key->s, rfd, &socks5_handler, OP_WRITE, s);
-                freeaddrinfo(res);
-                s->resolved_addr = NULL;
-                return SOCKS5_REQUEST_CONNECT;
-            }
-            close(rfd);
-        }
-        p = p->ai_next;
+        s->remote_domain   = p->ai_family;
+        s->remote_addr_len = p->ai_addrlen;
+        memcpy(&s->remote_addr, p->ai_addr, p->ai_addrlen);
+
+        freeaddrinfo(res);
+        s->resolved_addr = NULL;
+
+        // Llamamos a la función única que ya sabemos que funciona
+        return init_remote_connection(s, key);
     }
+
     freeaddrinfo(res);
     s->resolved_addr = NULL;
-    socks5_reply rep = {.version = SOCKS5_VERSION, .rep = SOCKS5_REP_HOST_UNREACHABLE, .rsv = 0x00};
+
+    socks5_reply rep = {
+      .version = SOCKS5_VERSION,
+      .rep     = SOCKS5_REP_HOST_UNREACHABLE,
+      .rsv     = 0x00
+    };
     rep.bnd.atyp = SOCKS5_ATYP_IPV4;
     memset(rep.bnd.addr.ipv4, 0, 4);
     rep.bnd.port = 0;
+
     uint8_t *out; size_t outlen;
     socks5_build_reply(&rep, &out, &outlen);
-    for (size_t i = 0; i < outlen; i++) buffer_write(&s->p2c_write, out[i]);
+    for (size_t i = 0; i < outlen; i++) {
+        buffer_write(&s->p2c_write, out[i]);
+    }
     free(out);
+
+    selector_set_interest_key(key, OP_WRITE);
     return SOCKS5_CLOSING;
 }
 
@@ -431,7 +465,11 @@ static unsigned on_request_connect_write(struct selector_key *key) {
     int rfd = s->remote_fd;
 
     int err=0; socklen_t len=sizeof(err);
-    getsockopt(rfd, SOL_SOCKET, SO_ERROR, &err, &len);
+    if(getsockopt(rfd, SOL_SOCKET, SO_ERROR, &err, &len) < 0) {
+        perror("getsockopt");
+        return SOCKS5_ERROR;
+
+    }
     if (err) {
         return SOCKS5_ERROR;
     }
@@ -555,80 +593,40 @@ static unsigned on_request_forward_write(struct selector_key *key) {
 
     return s->stm.current->state;
 }
+
 static int init_remote_connection(socks5_session *s, struct selector_key *key) {
-    socks5_request *req = &s->parsers.request.request;
-    char hoststr[INET6_ADDRSTRLEN];
-    const char *name;
-    struct addrinfo hints = {.ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM}, *res, *p;
-
-    switch (req->dst.atyp) {
-      case SOCKS5_ATYP_IPV4:
-          inet_ntop(AF_INET, req->dst.addr.ipv4, hoststr, sizeof(hoststr));
-          name = hoststr;
-          break;
-      case SOCKS5_ATYP_IPV6:
-          inet_ntop(AF_INET6, req->dst.addr.ipv6, hoststr, sizeof(hoststr));
-          name = hoststr;
-          break;
-      case SOCKS5_ATYP_DOMAIN:
-          memcpy(hoststr, req->dst.addr.domain.name, req->dst.addr.domain.len);
-          hoststr[req->dst.addr.domain.len] = '\0';
-          name = hoststr;
-          break;
-      default:
-          return -1;
+    int sock = socket(s->remote_domain, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("socket"); 
+        return SOCKS5_ERROR;
     }
 
-    char portstr[6];
-    snprintf(portstr, sizeof(portstr), "%u", req->dst.port);
-
-    int gai = getaddrinfo(name, portstr, &hints, &res);
-    if (gai != 0) {
-        return -1;
+    if (fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK) < 0) {
+        perror("fcntl O_NONBLOCK");
+        close(sock);
+        return SOCKS5_ERROR;
     }
 
-    int rfd = -1;
-    bool connected = false;
-
-    for (p = res; p != NULL; p = p->ai_next) {
-        rfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (rfd < 0) {
-            continue;
-        }
-
-        if (selector_fd_set_nio(rfd) == -1) {
-            close(rfd);
-            continue;
-        }
-
-        int c = connect(rfd, p->ai_addr, p->ai_addrlen);
-        if (c == 0) {
-            connected = true;
-            break;
-        }
-
-        if (c < 0 && errno == EINPROGRESS) {
-            connected = true;
-            break;
-        }
-
-        close(rfd);
-        rfd = -1;
+    int ret = connect(sock,
+                      (struct sockaddr *)&s->remote_addr,
+                      s->remote_addr_len);
+    if (ret < 0 && errno != EINPROGRESS) {
+        close(sock);
+        return SOCKS5_ERROR;
     }
 
-    freeaddrinfo(res);
+    s->remote_fd = sock;
 
-    if (!connected) {
-        return -1;
+    selector_set_interest_key(key, OP_NOOP);
+    if (selector_register(key->s, sock, &socks5_handler, OP_WRITE, s)
+        != SELECTOR_SUCCESS) {
+        close(sock);
+        return SOCKS5_ERROR;
     }
 
-    s->remote_fd = rfd;
-
-    snprintf(s->dest_str, sizeof(s->dest_str), "%s:%s", name, portstr);
-    s->log_id = log_access(s->user ? s->user->username : "<anon>", s->source_ip, s->dest_str, 0);
-
-    return 0;
+    return SOCKS5_REQUEST_CONNECT;
 }
+
 
 
 // CLOSING

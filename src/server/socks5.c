@@ -353,7 +353,7 @@ static unsigned on_request_read(struct selector_key *key) {
             case SOCKS5_CMD_CONNECT:
                 switch (s->parsers.request.request.dst.atyp)
                 {
-                    case SOCKS5_ATYP_DOMAIN:
+                    case SOCKS5_ATYP_DOMAIN: {
                         struct selector_key *k = malloc(sizeof(struct selector_key));
                         *k = *key;
                         pthread_t tid;
@@ -364,7 +364,7 @@ static unsigned on_request_read(struct selector_key *key) {
                         pthread_detach(tid);
                         selector_set_interest_key(key, OP_NOOP);
                         return SOCKS5_REQUEST_RESOLV;
-                                        
+                    }            
                     case SOCKS5_ATYP_IPV4: {
                         s->remote_domain   = AF_INET;
                         s->remote_addr_len = sizeof(struct sockaddr_in);
@@ -379,7 +379,6 @@ static unsigned on_request_read(struct selector_key *key) {
                         inet_ntop(AF_INET,
                                 s->parsers.request.request.dst.addr.ipv4,
                                 ipbuf, sizeof(ipbuf));
-                        uint16_t port = s->parsers.request.request.dst.port;
 
                         return init_remote_connection(s, key);
                     }
@@ -397,7 +396,6 @@ static unsigned on_request_read(struct selector_key *key) {
                         inet_ntop(AF_INET6,
                                 s->parsers.request.request.dst.addr.ipv6,
                                 ip6buf, sizeof(ip6buf));
-                        uint16_t port6 = s->parsers.request.request.dst.port;
 
                         return init_remote_connection(s, key);
                     }
@@ -660,7 +658,7 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key) {
     time_t now = time(NULL);
     struct tm *tm_info = gmtime(&now);
     fprintf(stdout,
-        "[%04d-%02d-%02dT%02d:%02d:%02dZ] %s %s %s %d\n",
+        "[%04d-%02d-%02dT%02d:%02d:%02dZ] %s %s %s\n",
         tm_info->tm_year + 1900,
         tm_info->tm_mon  + 1,
         tm_info->tm_mday,
@@ -669,9 +667,7 @@ static int init_remote_connection(socks5_session *s, struct selector_key *key) {
         tm_info->tm_sec,
         s->user ? s->user->username : "<anon>",
         s->source_ip,
-        s->dest_str,
-        0
-        );
+        s->dest_str);
     fflush(stdout);
 
     return SOCKS5_REQUEST_CONNECT;

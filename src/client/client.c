@@ -83,12 +83,6 @@ int main(int argc, char **argv) {
         }
         break;
     }
-    //todo: chequear porque me tira error
-    /*
-    ./bin/client -u admin:1234 -c 234234
-    Conecting a 127.0.0.1:8080 with user 'admin'
-    Invalid or malformed command
-    */
     case MODE_CHANGE_BUFFER:
         rst = proxy_set_max_io_buffer(args.cb_size);
         printf("%s\n", pc_response_status_to_string(rst));

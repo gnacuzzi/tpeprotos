@@ -1,7 +1,7 @@
 #include "include/socks5.h"
 #include "../utils/include/args.h"
 #include "./metp/metp.h"
-#include <arpa/inet.h> //TODO: chequear que sea legal
+#include <arpa/inet.h> 
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>

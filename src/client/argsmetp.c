@@ -32,7 +32,6 @@ static void parse_user(const char *s, char *out_user, char *out_pass) {
     free(copy);
 }
 
-//todo: agregar un -? para listar los users
 static void usage(const char *prog) {
     fprintf(stderr,
         "Usage: %s [OPTIONS]\n"
@@ -93,7 +92,7 @@ void parsemetp_args(int argc, char **argv, metpargs *args) {
         case 'p':
             args->metp_port = (unsigned short)atoi(optarg);
             break;
-        case 'u': {//todo: algo no esta funcionando
+        case 'u': {
             parse_user(optarg,
                     args->auth_user,
                     args->auth_pass);

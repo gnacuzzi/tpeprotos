@@ -66,11 +66,17 @@ typedef struct {
     bool is_closing;
 
     struct user * user;
+    uint8_t auth_status;
     int log_id;
 
     /* Campos para resolución asíncrona */
     struct addrinfo *resolved_addr;         // lista resultante de getaddrinfo
     struct addrinfo *resolved_addr_current; // puntero al nodo actual para conectar
+
+    /* Para conexión directa IPv4/IPv6 numérica */
+    int                remote_domain;      // AF_INET o AF_INET6
+    socklen_t          remote_addr_len;    // longitud de la dirección
+    struct sockaddr_storage remote_addr;   // sockaddr_in o sockaddr_in6, según remote_domain
 } socks5_session;
 
 const struct state_definition *get_socks5_states(void);

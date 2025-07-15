@@ -228,7 +228,7 @@ struct user * authenticate_user(credentials * credentials) {
         }
     }
     static struct user empty_user = { .username = "", .password = "", .role = ROLE_USER, .is_active = false };
-    return &empty_user;
+    return NULL;
 }
 
 void free_users() {

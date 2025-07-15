@@ -68,11 +68,9 @@ authentication_idx authentication_parse(socks5_authentication * parser, buffer *
         case AUTHENTICATION_DONE:
         case AUTHENTICATION_ERROR_VERSION:
         case AUTHENTICATION_ERROR_OTHER:
-            // Ya estamos en un estado final: salimos
             return parser->idx;
 
         default:
-            // Un estado inesperado: marcamos error genérico
             parser->idx = AUTHENTICATION_ERROR_OTHER;
             parser->rep.status = AUTHENTICATION_STATUS_FAILED;
             *error = true;

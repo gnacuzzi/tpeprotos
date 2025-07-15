@@ -12,7 +12,7 @@
 typedef struct {
     uint8_t version;          
     uint8_t nmethods;         
-    uint8_t methods[255]; //mn
+    uint8_t methods[255]; 
 } socks5_greeting_req;
 
 typedef struct {

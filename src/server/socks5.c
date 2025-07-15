@@ -101,12 +101,12 @@ const struct state_definition *get_socks5_states(void) {
 //GREETING
 static void on_greet(const unsigned state, struct selector_key *key) {
     socks5_session *s = key->data;
-    s->parsers.greeting.req.version = 0x05; 
+    s->parsers.greeting.req.version = SOCKS5_VERSION; 
     s->parsers.greeting.req.nmethods = 0; 
     s->parsers.greeting.bytes_read = 0;
     s->parsers.greeting.bytes_written = 0;
 
-    s->parsers.greeting.rep.version = 0x05; 
+    s->parsers.greeting.rep.version = SOCKS5_VERSION; 
     s->parsers.greeting.rep.method = NO_ACCEPTABLE_METHODS; 
 }
 
@@ -133,7 +133,7 @@ static unsigned on_greet_read(struct selector_key *key) {
         uint8_t b = *ptr;
         switch (g->bytes_read) {
           case 0:
-            if ((g->req.version = b) != 0x05)  return SOCKS5_ERROR;
+            if ((g->req.version = b) != SOCKS5_VERSION)  return SOCKS5_ERROR;
             break;
           case 1:
             if ((g->req.nmethods = b) == 0)    return SOCKS5_ERROR;
@@ -147,7 +147,7 @@ static unsigned on_greet_read(struct selector_key *key) {
         buffer_read_adv(buf, 1);  ptr++;  avail--;
 
         if (g->bytes_read == 2 + g->req.nmethods) {
-            g->rep.version = 0x05;
+            g->rep.version = SOCKS5_VERSION;
             g->rep.method = NO_ACCEPTABLE_METHODS;
             for (uint8_t i = 0; i < g->req.nmethods; i++) {
                 if (g->req.methods[i] == USER_PASS) {
@@ -271,8 +271,8 @@ static int generate_authentication_response(buffer *buf, uint8_t status) {
     if (available < 2) {
         return -1;
     }
-    out[0] = 0x01;    // versión del sub-protocolo
-    out[1] = status;  // estado de la autenticación
+    out[0] = SOCKS5_ATYP_IPV4;   
+    out[1] = status; 
     buffer_write_adv(buf, 2);
     return 2;
 }
@@ -432,7 +432,6 @@ static unsigned on_request_resolv(struct selector_key *key) {
         freeaddrinfo(res);
         s->resolved_addr = NULL;
 
-        // Llamamos a la función única que ya sabemos que funciona
         return init_remote_connection(s, key);
     }
 

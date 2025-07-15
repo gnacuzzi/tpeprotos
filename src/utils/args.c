@@ -71,7 +71,7 @@ usage(const char* progname)
 void
 parse_args(const int argc, char** argv, struct socks5args* args)
 {
-    memset(args, 0, sizeof(*args)); // sobre todo para setear en null los punteros de users
+    memset(args, 0, sizeof(*args)); 
 
     args->socks_addr = "0.0.0.0";
     args->socks_port = 1080;

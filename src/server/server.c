@@ -206,7 +206,6 @@ static void accept_socks5(struct selector_key *key) {
         return;
     }
 
-    // Inicializo sólo la sesión SOCKS5
     socks5_session *s = calloc(1, sizeof(*s));
     if (s == NULL) {
         perror("Failed to allocate SOCKS5 session");
@@ -331,7 +330,6 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    // 1) Listener SOCKS5
     int s5_fd = create_listener(args.socks_addr, socks_port_str);
     if (s5_fd == -1) {
         fprintf(stderr, "Failed to create SOCKS5 listener on %s:%s\n", args.socks_addr, socks_port_str);
@@ -353,7 +351,6 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    // 2) Listener METP
     int m_fd = create_listener(args.mng_addr, mng_port_str);
     if (m_fd == -1) {
         fprintf(stderr, "Failed to create METP listener on %s:%s\n", args.mng_addr, mng_port_str);

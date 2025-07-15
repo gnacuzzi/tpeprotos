@@ -48,11 +48,9 @@ typedef struct {
     char dest_str[256];
     uint64_t bytes_transferred;
 
-    // buffers cliente→proxy
     buffer c2p_read, c2p_write;
     uint8_t raw_c2p_r[BUF_SIZE], raw_c2p_w[BUF_SIZE];
 
-    // buffers proxy→cliente
     buffer p2c_read, p2c_write;
     uint8_t raw_p2c_r[BUF_SIZE], raw_p2c_w[BUF_SIZE];
 
@@ -69,14 +67,12 @@ typedef struct {
     uint8_t auth_status;
     int log_id;
 
-    /* Campos para resolución asíncrona */
-    struct addrinfo *resolved_addr;         // lista resultante de getaddrinfo
-    struct addrinfo *resolved_addr_current; // puntero al nodo actual para conectar
+    struct addrinfo *resolved_addr;         
+    struct addrinfo *resolved_addr_current; 
 
-    /* Para conexión directa IPv4/IPv6 numérica */
-    int                remote_domain;      // AF_INET o AF_INET6
-    socklen_t          remote_addr_len;    // longitud de la dirección
-    struct sockaddr_storage remote_addr;   // sockaddr_in o sockaddr_in6, según remote_domain
+    int                remote_domain;     
+    socklen_t          remote_addr_len;    
+    struct sockaddr_storage remote_addr;   
 } socks5_session;
 
 const struct state_definition *get_socks5_states(void);

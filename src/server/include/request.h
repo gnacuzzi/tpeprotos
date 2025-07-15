@@ -44,16 +44,16 @@ typedef struct {
 } socks5_address;
 
 typedef struct {
-    uint8_t           version; /* 0x05 */
+    uint8_t           version;
     socks5_command    cmd;
-    uint8_t           rsv;     /* 0x00 */
+    uint8_t           rsv;     
     socks5_address    dst;
 } socks5_request;
 
 typedef struct {
-    uint8_t            version; /* 0x05 */
+    uint8_t            version;
     socks5_reply_code rep;
-    uint8_t             rsv;    /* 0x00 */
+    uint8_t             rsv;    
     socks5_address    bnd;
 } socks5_reply;
 

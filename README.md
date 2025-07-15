@@ -41,18 +41,6 @@ Para limpiar los archivos generados (objetos y ejecutables):
 make clean
 ```
 
-### Nota sobre la plataforma
-
-El Makefile soporta dos variables de entorno para adaptar los flags de compilación:
-
-- `WSL=1`  
-  Cuando lo invocas así (`make all WSL=1`), se añade `-D_POSIX_C_SOURCE=200112L` para asegurar compatibilidad en Windows Subsystem for Linux.
-
-- `MAC=1`  
-  Si lo pones a 1 (`make all MAC=1`), se define `-DMSG_NOSIGNAL=0` para desactivar `MSG_NOSIGNAL` en macOS.
-
-
-
 ### Ubicación de los materiales
 
 - **Códigos fuente:** `src/`

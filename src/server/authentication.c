@@ -7,7 +7,7 @@ void authentication_init(socks5_authentication * parser) {
     parser->bytes_read = 0;
     parser->bytes_written = 0;
     parser->idx = AUTHENTICATION_VER;
-    parser->rep.ver = 0x01;
+    parser->rep.ver = AUTHENTICATION_VERSION;
     parser->rep.status = AUTHENTICATION_STATUS_SUCCESS;
 }
 
